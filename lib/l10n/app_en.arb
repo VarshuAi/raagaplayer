@@ -1,0 +1,9 @@
+{
+  "@@locale": "en",
+  "appTitle": "Raaga",
+  "homeTitle": "Raaga Home",
+  "searchHint": "Search songs, albums, artists...",
+  "libraryTitle": "My Library",
+  "settingsTitle": "Settings",
+  "lyricsNotFound": "Synchronized lyrics not available for this track."
+}
