@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
 import 'songs_tab.dart';
@@ -51,6 +52,12 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: () => context.push('/library/settings'),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,

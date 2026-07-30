@@ -6,6 +6,11 @@ import '../features/home/screens/home_screen.dart';
 import '../features/search/screens/search_screen.dart';
 import '../features/library/screens/library_screen.dart';
 import '../features/dashboard/screens/design_system_screen.dart';
+import '../features/settings/screens/settings_screen.dart';
+import '../features/settings/screens/appearance_settings_screen.dart';
+import '../features/settings/screens/playback_settings_screen.dart';
+import '../features/settings/screens/library_settings_screen.dart';
+import '../features/settings/screens/backup_restore_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final GlobalKey<NavigatorState> _homeNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'homeNav');
@@ -49,6 +54,30 @@ final goRouter = GoRouter(
             GoRoute(
               path: AppRoutes.library,
               builder: (context, state) => const LibraryScreen(),
+              routes: [
+                GoRoute(
+                  path: 'settings',
+                  builder: (context, state) => const SettingsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'appearance',
+                      builder: (context, state) => const AppearanceSettingsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'playback',
+                      builder: (context, state) => const PlaybackSettingsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'library',
+                      builder: (context, state) => const LibrarySettingsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'backup',
+                      builder: (context, state) => const BackupRestoreScreen(),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
