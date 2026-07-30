@@ -1,41 +1,24 @@
-import 'package:flutter/material.dart';
-import '../../../core/audio/audio_queue.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/song.dart';
+import '../../../core/audio/queue_manager.dart';
 
-class QueueProvider extends ChangeNotifier {
-  final AudioQueue _queue = AudioQueue(items: []);
-
-  List<Song> get items => _queue.items;
-  int get currentIndex => _queue.currentIndex;
-  Song? get currentSong => _queue.currentSong;
-
-  void addToQueue(Song song) {
-    _queue.add(song);
-    notifyListeners();
+class QueueNotifier extends StateNotifier<List<Song>> {
+  QueueNotifier() : super(QueueManager().currentQueue.items) {
+    QueueManager().onQueueChanged.listen((queue) {
+      state = List.from(queue.items);
+    });
   }
 
-  void next() {
-    _queue.next();
-    notifyListeners();
-  }
-
-  void previous() {
-    _queue.previous();
-    notifyListeners();
-  }
-
-  void shuffle() {
-    _queue.shuffle();
-    notifyListeners();
-  }
-
-  void remove(int index) {
-    _queue.removeAt(index);
-    notifyListeners();
-  }
-
-  void clear() {
-    _queue.clear();
-    notifyListeners();
-  }
+  void add(Song song) => QueueManager().add(song);
+  void clear() => QueueManager().clear();
+  void remove(int index) => QueueManager().remove(index);
+  void shuffle() => QueueManager().shuffle();
 }
+
+final queueProvider = StateNotifierProvider<QueueNotifier, List<Song>>((ref) {
+  return QueueNotifier();
+});
+
+final currentQueueIndexProvider = StateProvider<int>((ref) {
+  return QueueManager().currentQueue.currentIndex;
+});
