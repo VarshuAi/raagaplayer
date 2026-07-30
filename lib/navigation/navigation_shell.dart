@@ -4,6 +4,7 @@ import '../core/icons/raaga_icons.dart';
 import '../core/extensions/context_extensions.dart';
 import '../features/player/provider/player_provider.dart';
 import '../features/player/widgets/raaga_mini_player.dart';
+import '../features/player/screens/now_playing_screen.dart';
 
 class NavigationShell extends ConsumerWidget {
   final Widget child;
@@ -40,7 +41,12 @@ class NavigationShell extends ConsumerWidget {
               child: RaagaMiniPlayer(
                 song: currentSong,
                 onTap: () {
-                  // Expand to Full Player sheet or route (Phase 4 Now Playing)
+                  // Navigate to Now Playing Screen using bottom sheet or full push transition
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const NowPlayingScreen(),
+                    ),
+                  );
                 },
               ),
             ),
