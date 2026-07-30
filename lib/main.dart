@@ -1,9 +1,14 @@
-import 'package:flutter/material';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
-import 'features/dashboard/screens/design_system_screen.dart';
+import 'navigation/app_router.dart';
 
 void main() {
-  runApp(const RaagaApp());
+  runApp(
+    const ProviderScope(
+      child: RaagaApp(),
+    ),
+  );
 }
 
 class RaagaApp extends StatelessWidget {
@@ -11,11 +16,11 @@ class RaagaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Raaga',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
-      home: const DesignSystemScreen(),
+      routerConfig: goRouter,
     );
   }
 }

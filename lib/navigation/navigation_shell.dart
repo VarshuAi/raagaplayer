@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/icons/raaga_icons.dart';
 import '../core/extensions/context_extensions.dart';
-import '../core/widgets/buttons/raaga_buttons.dart';
+import '../features/player/provider/player_provider.dart';
+import '../features/player/widgets/raaga_mini_player.dart';
 
-class NavigationShell extends StatelessWidget {
+class NavigationShell extends ConsumerWidget {
   final Widget child;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
@@ -16,9 +18,34 @@ class NavigationShell extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentSong = ref.watch(currentSongProvider);
+
     return Scaffold(
-      body: child,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: currentSong != null ? 80.0 : 0.0,
+              ),
+              child: child,
+            ),
+          ),
+          if (currentSong != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 8.0,
+              child: RaagaMiniPlayer(
+                song: currentSong,
+                onTap: () {
+                  // Expand to Full Player sheet or route (Phase 4 Now Playing)
+                },
+              ),
+            ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: onDestinationSelected,
@@ -34,10 +61,6 @@ class NavigationShell extends StatelessWidget {
           NavigationDestination(
             icon: Icon(RaagaIcons.library),
             label: 'Library',
-          ),
-          NavigationDestination(
-            icon: Icon(RaagaIcons.settings),
-            label: 'Settings',
           ),
         ],
       ),

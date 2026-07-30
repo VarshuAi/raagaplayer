@@ -1,53 +1,67 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/layout/glass_container.dart';
-import '../../../core/widgets/layout/raaga_artwork.dart';
+import '../../../core/widgets/layout/raaga_artwork_palette.dart';
 import '../../../core/widgets/buttons/raaga_buttons.dart';
 import '../../../core/widgets/indicators/raaga_indicators.dart';
 import '../../../core/icons/raaga_icons.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
 import '../../../domain/entities/song.dart';
+import '../provider/playback_provider.dart';
+import '../provider/artwork_provider.dart';
+import '../../../core/audio/audio_state.dart';
 
-class RaagaMiniPlayer extends StatelessWidget {
+class RaagaMiniPlayer extends ConsumerWidget {
   final Song song;
-  final bool isPlaying;
-  final double progress; // value between 0.0 and 1.0
   final VoidCallback onTap;
-  final VoidCallback onPlayPause;
-  final VoidCallback onSkipNext;
 
   const RaagaMiniPlayer({
     super.key,
     required this.song,
-    required this.isPlaying,
-    required this.progress,
     required this.onTap,
-    required this.onPlayPause,
-    required this.onSkipNext,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Read active playback states
+    final isPlayingVal = ref.watch(playbackStateProvider).value == RaagaPlaybackState.playing;
+    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
+    final duration = ref.watch(playbackDurationProvider).value ?? Duration.zero;
+    final palette = ref.watch(artworkPaletteProvider);
+    final engine = ref.watch(audioEngineProvider);
+
+    final double progress = duration.inMilliseconds > 0
+        ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.all(AppSpacing.md),
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4.0),
         child: RaagaGlassContainer(
           borderRadius: BorderRadius.circular(16.0),
-          opacity: 0.1,
+          opacity: 0.12,
+          border: Border.all(
+            color: palette.vibrantColor.withOpacity(0.15),
+            width: 1.5,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Horizontal details row
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.sm),
                 child: Row(
                   children: [
-                    RaagaArtwork(
+                    // Visual focus album art with color palette extraction callback
+                    RaagaArtworkPalette(
                       imageUrl: song.artworkUrl,
                       size: 48.0,
                       radius: 12.0,
-                      heroTag: 'mini_player_art',
+                      heroTag: 'mini_player_art_hero',
+                      onPaletteExtracted: (newPalette) {
+                        ref.read(artworkPaletteProvider.notifier).state = newPalette;
+                      },
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
@@ -74,21 +88,20 @@ class RaagaMiniPlayer extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Action controls
                     RaagaIconButton(
-                      icon: isPlaying ? RaagaIcons.pause : RaagaIcons.play,
+                      icon: isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
                       size: 24,
-                      onTap: onPlayPause,
-                    ),
-                    RaagaIconButton(
-                      icon: RaagaIcons.next,
-                      size: 24,
-                      onTap: onSkipNext,
+                      onTap: () {
+                        if (isPlayingVal) {
+                          engine.pause();
+                        } else {
+                          engine.play();
+                        }
+                      },
                     ),
                   ],
                 ),
               ),
-              // Compact horizontal track progress bar
               RaagaProgressIndicator(value: progress),
             ],
           ),
