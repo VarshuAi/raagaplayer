@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../design_tokens/colors.dart';
 import '../../design_tokens/surfaces.dart';
+import '../theme_extension.dart';
 
 final RaagaThemeExtension highContrastThemeExtension = RaagaThemeExtension(
   surfaceHigh: const Color(0xFF33363F),

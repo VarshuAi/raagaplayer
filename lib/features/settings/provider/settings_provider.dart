@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/models/app_settings.dart';
 import '../../home/screens/home_screen.dart';
 

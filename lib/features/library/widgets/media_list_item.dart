@@ -26,10 +26,11 @@ class MediaListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedTap(
-      onTap: onTap,
+    return GestureDetector(
       onLongPress: onLongPress,
-      child: Container(
+      child: AnimatedTap(
+        onTap: onTap,
+        child: Container(
         height: 72.0,
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
@@ -72,6 +73,7 @@ class MediaListItem extends StatelessWidget {
             if (trailing != null) trailing!,
           ],
         ),
+      ),
       ),
     );
   }

@@ -99,7 +99,7 @@ class AppTheme {
       // Bottom Sheet Theme mapping
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: colorScheme.surfaceContainerHigh,
-        shape: AppRadius.bottomSheetRadius,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.bottomSheetRadius),
         elevation: 0,
       ),
 

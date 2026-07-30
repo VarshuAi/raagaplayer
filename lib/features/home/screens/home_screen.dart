@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/database/app_database.dart';
+import '../../../core/database/app_database.dart' hide Song;
 import '../../../core/widgets/layout/status_views.dart';
 import '../../../core/widgets/indicators/raaga_indicators.dart';
 import '../../../core/widgets/layout/raaga_artwork.dart';
@@ -73,7 +73,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
             return const RaagaEmptyState(
               title: 'No Songs Available',
               description: 'Use the library tab to scan your local storage.',
-              icon: Icons.music_library_rounded,
+              icon: Icons.library_music_rounded,
             );
           }
 

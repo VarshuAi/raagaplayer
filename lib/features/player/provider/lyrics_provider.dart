@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class LyricLine {
   final Duration timeStamp;
@@ -42,3 +43,7 @@ class LyricsProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+final lyricsProvider = ChangeNotifierProvider<LyricsProvider>((ref) {
+  return LyricsProvider();
+});

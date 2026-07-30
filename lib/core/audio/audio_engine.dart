@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'audio_state.dart';
-import '../../error/result.dart';
-import '../../error/failures.dart';
+import '../error/result.dart';
+import '../error/failures.dart';
 
 abstract class AudioEngine {
   // Streams for state changes

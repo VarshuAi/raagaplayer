@@ -4,6 +4,7 @@ import '../../../core/widgets/inputs/raaga_inputs.dart';
 import '../../../core/widgets/layout/status_views.dart';
 import '../../../core/widgets/indicators/raaga_indicators.dart';
 import '../../../core/search/search_index.dart';
+import '../../../core/extensions/context_extensions.dart';
 import '../../home/screens/home_screen.dart';
 import '../../../domain/entities/song.dart';
 import '../../player/provider/playback_provider.dart';
@@ -45,7 +46,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       final results = await searchIndex.performSearch(query);
 
       setState(() {
-        _searchResults = results.songs;
+        _searchResults = results.songs
+            .map((s) => Song(
+                  id: s.id,
+                  title: s.title,
+                  artist: s.artist,
+                  album: s.album,
+                  artworkUrl: s.artworkUrl ?? '',
+                  sourceUrl: s.path,
+                  duration: Duration(milliseconds: s.durationMs ?? 0),
+                  isLocal: s.isLocal,
+                  isFavorite: s.isFavorite,
+                ))
+            .toList();
         _isLoading = false;
       });
     } catch (_) {
