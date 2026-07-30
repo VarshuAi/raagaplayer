@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
@@ -12,14 +13,12 @@ import '../widgets/shelf_widget.dart';
 import '../../player/provider/playback_provider.dart';
 import '../../player/provider/player_provider.dart';
 
-// Database Provider
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(() => db.close());
   return db;
 });
 
-// Home page data fetch providers
 final homeSongsProvider = FutureProvider<List<Song>>((ref) async {
   final db = ref.watch(databaseProvider);
   final list = await db.select(db.songs).get();
@@ -60,9 +59,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
         backgroundColor: Colors.transparent,
         title: Text(
           'Raaga',
-          style: context.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+          style: context.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
       ),
       body: songsAsync.when(
@@ -73,57 +70,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
         ),
         data: (songs) {
           if (songs.isEmpty) {
-            return RaagaEmptyState(
+            return const RaagaEmptyState(
               title: 'No Songs Available',
-              description: 'Please scan local storage to index your music catalog.',
+              description: 'Use the library tab to scan your local storage.',
               icon: Icons.music_library_rounded,
-              actionText: 'Scan Storage',
-              onActionTap: () {
-                // Navigate to library scan tab
-              },
             );
           }
 
-          final recent = songs.take(8).toList();
           final favorites = songs.where((s) => s.isFavorite).toList();
+          final randomMix = List<Song>.from(songs)..shuffle(Random(42));
+          final recentlyAdded = List<Song>.from(songs).reversed.take(8).toList();
 
           return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Continue Listening / Recently Played
-                RaagaShelfWidget(
-                  title: 'Continue Listening',
-                  subtitle: 'Pick up where you left off',
-                  itemCount: recent.length,
-                  itemBuilder: (context, index) {
-                    final song = recent[index];
-                    return _buildSongCard(context, song);
-                  },
-                ),
-
-                // Favorites Shelf
+                _buildDynamicShelf('Continue Listening', 'Pick up where you left off', songs.take(5).toList()),
+                _buildDynamicShelf('Recently Played', 'Tracks you listened to recently', songs.take(6).toList()),
+                _buildDynamicShelf('Recently Added', 'Latest additions to your catalog', recentlyAdded),
                 if (favorites.isNotEmpty)
-                  RaagaShelfWidget(
-                    title: 'Favorites',
-                    subtitle: 'Your personal collection',
-                    itemCount: favorites.length,
-                    itemBuilder: (context, index) {
-                      final song = favorites[index];
-                      return _buildSongCard(context, song);
-                    },
-                  ),
-
-                // All Device Songs Shelf
-                RaagaShelfWidget(
-                  title: 'On This Device',
-                  subtitle: 'Tracks indexed in local folders',
-                  itemCount: songs.length,
-                  itemBuilder: (context, index) {
-                    final song = songs[index];
-                    return _buildSongCard(context, song);
-                  },
-                ),
+                  _buildDynamicShelf('Favorites', 'Your personal catalog highlights', favorites),
+                _buildDynamicShelf('Random Mix', 'A shuffled selection just for you', randomMix.take(10).toList()),
+                _buildDynamicShelf('On This Device', 'All local tracks found', songs),
               ],
             ),
           );
@@ -132,48 +101,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
     );
   }
 
-  Widget _buildSongCard(BuildContext context, Song song) {
-    return Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.md),
-      child: RaagaCard(
-        width: 140.0,
-        surfaceLevel: 2,
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        onTap: () {
-          ref.read(currentSongProvider.notifier).state = song;
-          ref.read(audioEngineProvider).setSource(song.sourceUrl).then((_) {
-            ref.read(audioEngineProvider).play();
-          });
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            RaagaArtwork(
-              imageUrl: song.artworkUrl,
-              size: 120.0,
-              radius: 12.0,
-              heroTag: 'home_art_${song.id}',
+  Widget _buildDynamicShelf(String title, String subtitle, List<Song> items) {
+    return RaagaShelfWidget(
+      title: title,
+      subtitle: subtitle,
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final song = items[index];
+        return Padding(
+          padding: const EdgeInsets.only(right: AppSpacing.md),
+          child: RaagaCard(
+            width: 140.0,
+            surfaceLevel: 2,
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            onTap: () {
+              ref.read(currentSongProvider.notifier).state = song;
+              ref.read(audioEngineProvider).setSource(song.sourceUrl).then((_) {
+                ref.read(audioEngineProvider).play();
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RaagaArtwork(
+                  imageUrl: song.artworkUrl,
+                  size: 120.0,
+                  radius: 12.0,
+                  heroTag: 'home_${title.replaceAll(' ', '_')}_${song.id}',
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  song.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  song.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textTheme.bodySmall?.copyWith(
+                    color: context.colorScheme.onSurface.withOpacity(0.50),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              song.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              song.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.textTheme.bodySmall?.copyWith(
-                color: context.colorScheme.onSurface.withOpacity(0.50),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
