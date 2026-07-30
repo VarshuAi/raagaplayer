@@ -10,6 +10,7 @@ class AppSettings {
   final bool resumePlayback;
   final bool scanOnStartup;
   final double hapticStrength;
+  final List<String> scanFolders;
 
   const AppSettings({
     this.themeMode = 'dark',
@@ -23,6 +24,7 @@ class AppSettings {
     this.resumePlayback = true,
     this.scanOnStartup = false,
     this.hapticStrength = 1.0,
+    this.scanFolders = const [],
   });
 
   AppSettings copyWith({
@@ -37,6 +39,7 @@ class AppSettings {
     bool? resumePlayback,
     bool? scanOnStartup,
     double? hapticStrength,
+    List<String>? scanFolders,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -50,6 +53,7 @@ class AppSettings {
       resumePlayback: resumePlayback ?? this.resumePlayback,
       scanOnStartup: scanOnStartup ?? this.scanOnStartup,
       hapticStrength: hapticStrength ?? this.hapticStrength,
+      scanFolders: scanFolders ?? this.scanFolders,
     );
   }
 
@@ -66,6 +70,7 @@ class AppSettings {
       'resumePlayback': resumePlayback,
       'scanOnStartup': scanOnStartup,
       'hapticStrength': hapticStrength,
+      'scanFolders': scanFolders,
     };
   }
 
@@ -82,6 +87,7 @@ class AppSettings {
       resumePlayback: json['resumePlayback'] ?? true,
       scanOnStartup: json['scanOnStartup'] ?? false,
       hapticStrength: (json['hapticStrength'] ?? 1.0) as double,
+      scanFolders: List<String>.from(json['scanFolders'] ?? []),
     );
   }
 }

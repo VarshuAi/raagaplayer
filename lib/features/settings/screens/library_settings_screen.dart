@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../provider/settings_provider.dart';
 import '../widgets/settings_tile.dart';
 import '../../home/screens/home_screen.dart';
+import '../../library/screens/folders_tab.dart';
 import '../../../core/scanner/scanner_service.dart';
 import '../../../core/services/cache_manager.dart';
 import '../../../core/widgets/feedback/raaga_feedback.dart';
@@ -65,6 +66,69 @@ class LibrarySettingsScreen extends ConsumerWidget {
               RaagaSnackBar.show(context: context, message: 'Database optimized successfully.');
             },
           ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Text(
+              'SCAN FOLDERS',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                    letterSpacing: 1.2,
+                  ),
+            ),
+          ),
+          ref.watch(foldersProvider).when(
+                loading: () => const Center(child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                )),
+                error: (e, __) => Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('Error loading folders: $e'),
+                ),
+                data: (folders) {
+                  if (folders.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('No folders detected. Trigger a scan first.'),
+                    );
+                  }
+                  return Column(
+                    children: folders.map((folderPath) {
+                      final isSelected = settings.scanFolders.isEmpty ||
+                          settings.scanFolders.contains(folderPath);
+                      return CheckboxListTile(
+                        title: Text(folderPath.split('/').last),
+                        subtitle: Text(folderPath, style: const TextStyle(fontSize: 12)),
+                        value: isSelected,
+                        onChanged: (val) {
+                          final currentList = List<String>.from(settings.scanFolders);
+                          if (val == true) {
+                            if (currentList.isEmpty) {
+                              currentList.addAll(folders);
+                            }
+                            if (!currentList.contains(folderPath)) {
+                              currentList.add(folderPath);
+                            }
+                          } else {
+                            if (currentList.isEmpty) {
+                              currentList.addAll(folders);
+                            }
+                            currentList.remove(folderPath);
+                          }
+
+                          if (currentList.length == folders.length || currentList.isEmpty) {
+                            notifier.updateSettings(settings.copyWith(scanFolders: []));
+                          } else {
+                            notifier.updateSettings(settings.copyWith(scanFolders: currentList));
+                          }
+                        },
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
         ],
       ),
     );

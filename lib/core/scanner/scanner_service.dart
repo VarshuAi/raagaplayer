@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'media_scanner.dart';
 import 'scanner_events.dart';
 import '../database/app_database.dart';
@@ -18,9 +19,18 @@ class ScannerService {
   }
 
   Future<void> triggerRescan() async {
-    // Run the scanner in a background task
-    // Using simple async execution, keeping database operations thread-safe
-    await _scanner.scanDeviceMusic();
+    List<String> allowedFolders = [];
+    try {
+      final entry = await (database.select(database.settingsTable)
+            ..where((t) => t.key.equals('app_settings_config')))
+          .getSingleOrNull();
+      if (entry != null) {
+        final decoded = json.decode(entry.value);
+        allowedFolders = List<String>.from(decoded['scanFolders'] ?? []);
+      }
+    } catch (_) {}
+
+    await _scanner.scanDeviceMusic(allowedFolders: allowedFolders);
   }
 
   void dispose() {
