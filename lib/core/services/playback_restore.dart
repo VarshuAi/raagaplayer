@@ -1,4 +1,4 @@
-import '../database/app_database.dart';
+import '../database/app_database.dart' hide Song, Playlist;
 import '../audio/queue_manager.dart';
 import '../../domain/entities/song.dart';
 import 'package:drift/drift.dart';

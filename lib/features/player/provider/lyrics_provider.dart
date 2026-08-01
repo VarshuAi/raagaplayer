@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-class LyricLine {
-  final Duration timeStamp;
-  final String text;
-
-  LyricLine(this.timeStamp, this.text);
-}
+import '../../../music/domain/entities/lyrics.dart';
 
 class LyricsProvider extends ChangeNotifier {
   List<LyricLine> _lyrics = [];

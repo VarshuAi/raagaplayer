@@ -5,7 +5,7 @@ import '../../../core/widgets/indicators/raaga_indicators.dart';
 import '../../../core/widgets/layout/raaga_artwork.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 import '../widgets/media_list_item.dart';
 
 final albumsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {

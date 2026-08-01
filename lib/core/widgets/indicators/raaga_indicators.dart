@@ -22,14 +22,78 @@ class RaagaProgressIndicator extends StatelessWidget {
   }
 }
 
-class RaagaCircularIndicator extends StatelessWidget {
-  const RaagaCircularIndicator({super.key});
+class RaagaCircularIndicator extends StatefulWidget {
+  final double size;
+  const RaagaCircularIndicator({super.key, this.size = 36.0});
+
+  @override
+  State<RaagaCircularIndicator> createState() => _RaagaCircularIndicatorState();
+}
+
+class _RaagaCircularIndicatorState extends State<RaagaCircularIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return CircularProgressIndicator(
-      strokeWidth: 3,
-      valueColor: AlwaysStoppedAnimation<Color>(context.colorScheme.primary),
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final animVal = _controller.value;
+        return SizedBox(
+          width: widget.size * 1.4,
+          height: widget.size,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List.generate(5, (index) {
+              final offsets = [0.0, 0.35, 0.7, 0.2, 0.5];
+              final delay = offsets[index % offsets.length];
+              final heightMultiplier = (0.25 + 0.75 * ((animVal + delay) % 1.0));
+
+              return Container(
+                width: 4,
+                height: widget.size * heightMultiplier,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      primaryColor,
+                      secondaryColor,
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.4 * heightMultiplier),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }

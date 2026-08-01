@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 class RaagaAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final AudioPlayer _player;
@@ -49,14 +52,66 @@ class RaagaAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<void> stop() => _player.stop();
 
-  void updateMetadata({
+  @override
+  Future<void> skipToNext() async {
+    if (_onSkipNext != null) {
+      await _onSkipNext!();
+    }
+  }
+
+  @override
+  Future<void> skipToPrevious() async {
+    if (_onSkipPrevious != null) {
+      await _onSkipPrevious!();
+    }
+  }
+
+  Future<void> Function()? _onSkipNext;
+  Future<void> Function()? _onSkipPrevious;
+
+  void setMediaControlCallbacks({
+    Future<void> Function()? onSkipNext,
+    Future<void> Function()? onSkipPrevious,
+  }) {
+    _onSkipNext = onSkipNext;
+    _onSkipPrevious = onSkipPrevious;
+  }
+
+  Future<void> updateMetadata({
     required String id,
     required String title,
     required String artist,
     required String album,
     required Duration duration,
     String? artworkUri,
-  }) {
+  }) async {
+    Uri? finalArtUri;
+
+    if (artworkUri != null && artworkUri.isNotEmpty) {
+      if (artworkUri.startsWith('http://') || artworkUri.startsWith('https://')) {
+        try {
+          final client = http.Client();
+          final res = await client.get(Uri.parse(artworkUri)).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200) {
+            final tempDir = await getTemporaryDirectory();
+            final safeId = id.replaceAll(RegExp(r'[^\w\.-]'), '_');
+            final file = File('${tempDir.path}/notification_art_$safeId.jpg');
+            await file.writeAsBytes(res.bodyBytes);
+            finalArtUri = Uri.file(file.path);
+          } else {
+            finalArtUri = Uri.parse(artworkUri);
+          }
+          client.close();
+        } catch (_) {
+          finalArtUri = Uri.parse(artworkUri);
+        }
+      } else if (artworkUri.startsWith('file://')) {
+        finalArtUri = Uri.parse(artworkUri);
+      } else {
+        finalArtUri = Uri.file(artworkUri);
+      }
+    }
+
     mediaItem.add(
       MediaItem(
         id: id,
@@ -64,7 +119,7 @@ class RaagaAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
         artist: artist,
         album: album,
         duration: duration,
-        artUri: artworkUri != null ? Uri.parse(artworkUri) : null,
+        artUri: finalArtUri,
       ),
     );
   }

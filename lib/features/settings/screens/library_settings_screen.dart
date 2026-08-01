@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../provider/settings_provider.dart';
 import '../widgets/settings_tile.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../library/screens/folders_tab.dart';
 import '../../../core/scanner/scanner_service.dart';
 import '../../../core/services/cache_manager.dart';
 import '../../../core/widgets/feedback/raaga_feedback.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class LibrarySettingsScreen extends ConsumerWidget {
   const LibrarySettingsScreen({super.key});

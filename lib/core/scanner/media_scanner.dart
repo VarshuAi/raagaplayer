@@ -66,6 +66,11 @@ class MediaScanner {
             songCount: const Value(1),
           ),
         );
+
+        await database.customStatement('''
+          INSERT OR REPLACE INTO song_search_index (song_id, title, artist, album)
+          VALUES (?, ?, ?, ?);
+        ''', [songId, entry.value, 'Raaga Zen', 'Local Preloads']);
       }
 
       await database.into(database.folders).insertOnConflictUpdate(
@@ -138,6 +143,11 @@ class MediaScanner {
               songCount: const Value(1),
             ),
           );
+
+          await database.customStatement('''
+            INSERT OR REPLACE INTO song_search_index (song_id, title, artist, album)
+            VALUES (?, ?, ?, ?);
+          ''', [songId, title, artist, album]);
 
           await database.into(database.folders).insertOnConflictUpdate(
             FoldersCompanion(

@@ -3,30 +3,38 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Dark Mode Base Color Tokens
-  static const Color background = Color(0xFF0B0B0D);
-  static const Color surfaceSecondary = Color(0xFF15161A);
-  static const Color surfaceElevated = Color(0xFF1D1F24);
-  static const Color surfaceCard = Color(0xFF202228);
-  static const Color divider = Color(0x0FFFFFFF); // rgba(255,255,255,0.06)
+  // Dark Mode Base Color Tokens (Deep Pitch Black with subtle purple tint)
+  static const Color background = Color(0xFF07070B);
+  static const Color surfaceSecondary = Color(0xFF0F0F17);
+  static const Color surfaceElevated = Color(0xFF151522);
+  static const Color surfaceCard = Color(0xFF1C1C2B);
+  static const Color divider = Color(0x1AFFFFFF); // rgba(255,255,255,0.10)
 
   // AMOLED Base Color Tokens
   static const Color amoledBackground = Color(0xFF000000);
-  static const Color amoledSurfaceSecondary = Color(0xFF0A0A0C);
-  static const Color amoledSurfaceElevated = Color(0xFF111114);
-  static const Color amoledSurfaceCard = Color(0xFF161619);
+  static const Color amoledSurfaceSecondary = Color(0xFF08080B);
+  static const Color amoledSurfaceElevated = Color(0xFF0F0F14);
+  static const Color amoledSurfaceCard = Color(0xFF14141E);
 
-  // Accents & Brand Colors
-  static const Color primaryAccent = Color(0xFF8B5CF6);   // #8B5CF6 (Vibrant Purple)
-  static const Color secondaryAccent = Color(0xFFA855F7); // #A855F7 (Vibrant Violet)
+  // Neon Gradient & Brand Accents
+  static const Color primaryAccent = Color(0xFF903AFF);   // Vibrant Electric Purple
+  static const Color secondaryAccent = Color(0xFFFF3579); // Vibrant Electric Pink
+  static const Color gradientStart = Color(0xFFFF3579);
+  static const Color gradientEnd = Color(0xFF903AFF);
+
+  static const LinearGradient primaryGradient = LinearGradient(
+    colors: [gradientStart, gradientEnd],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   // Status & Feedback Colors
-  static const Color success = Color(0xFF22C55E); // #22C55E
-  static const Color warning = Color(0xFFF59E0B); // #F59E0B
-  static const Color error = Color(0xFFEF4444);   // #EF4444
+  static const Color success = Color(0xFF22C55E);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color error = Color(0xFFEF4444);
 
   // Typography Colors
   static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xB2FFFFFF); // rgba(255,255,255,0.70)
-  static const Color disabled = Color(0x61FFFFFF);      // rgba(255,255,255,0.38)
+  static const Color textSecondary = Color(0x99FFFFFF); // rgba(255,255,255,0.60)
+  static const Color disabled = Color(0x3DFFFFFF);      // rgba(255,255,255,0.24)
 }

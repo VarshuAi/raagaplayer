@@ -114,6 +114,15 @@ class AppTheme {
 
   // Pre-configured standard themes
   static ThemeData get dark => buildTheme(darkColorScheme, darkThemeExtension);
+
+  static ThemeData darkWithPrimary(Color primaryColor) {
+    final customScheme = darkColorScheme.copyWith(
+      primary: primaryColor,
+      secondary: primaryColor.withOpacity(0.8),
+    );
+    return buildTheme(customScheme, darkThemeExtension);
+  }
+
   static ThemeData get amoled => buildTheme(amoledColorScheme, amoledThemeExtension);
   static ThemeData get highContrast => buildTheme(highContrastColorScheme, highContrastThemeExtension);
 }

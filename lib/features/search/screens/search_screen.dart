@@ -1,14 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../../../core/widgets/inputs/raaga_inputs.dart';
 import '../../../core/widgets/layout/status_views.dart';
 import '../../../core/widgets/indicators/raaga_indicators.dart';
+import '../../../core/widgets/layout/raaga_artwork.dart';
 import '../../../core/search/search_index.dart';
 import '../../../core/extensions/context_extensions.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/design_tokens/spacing.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../../domain/entities/song.dart';
-import '../../player/provider/playback_provider.dart';
 import '../../player/provider/player_provider.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -21,12 +28,80 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Song> _searchResults = [];
   bool _isLoading = false;
-  String _activeCategory = 'All';
+  List<String> _recentSearches = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecentSearches();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(trendingSongsProvider);
+    });
+  }
+
+  Timer? _debounce;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(query);
+    });
+  }
+
+  Future<void> _loadRecentSearches() async {
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final file = File(p.join(docDir.path, 'recent_searches.json'));
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final List<dynamic> list = json.decode(content);
+        setState(() {
+          _recentSearches = list.map((e) => e.toString()).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveSearchTerm(String term) async {
+    final clean = term.trim();
+    if (clean.isEmpty) return;
+
+    final updated = List<String>.from(_recentSearches);
+    updated.removeWhere((item) => item.toLowerCase() == clean.toLowerCase());
+    updated.insert(0, clean);
+    if (updated.length > 10) {
+      updated.removeLast();
+    }
+
+    setState(() {
+      _recentSearches = updated;
+    });
+
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final file = File(p.join(docDir.path, 'recent_searches.json'));
+      await file.writeAsString(json.encode(updated));
+    } catch (_) {}
+  }
+
+  Future<void> _clearRecentSearches() async {
+    setState(() {
+      _recentSearches.clear();
+    });
+    try {
+      final docDir = await getApplicationDocumentsDirectory();
+      final file = File(p.join(docDir.path, 'recent_searches.json'));
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   Future<void> _performSearch(String query) async {
@@ -41,12 +116,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final db = ref.read(databaseProvider);
-      final searchIndex = SearchIndex(database: db);
-      final results = await searchIndex.performSearch(query);
+      final searchUseCase = ref.read(searchMusicUseCaseProvider);
+      final result = await searchUseCase.execute(query);
 
-      setState(() {
-        _searchResults = results.songs
+      List<Song> finalResults = [];
+
+      if (result.isSuccess) {
+        finalResults = result.success.songs;
+      }
+
+      if (finalResults.isEmpty) {
+        final db = ref.read(databaseProvider);
+        final searchIndex = SearchIndex(database: db);
+        final localResults = await searchIndex.performSearch(query);
+        finalResults = localResults.songs
             .map((s) => Song(
                   id: s.id,
                   title: s.title,
@@ -59,6 +142,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   isFavorite: s.isFavorite,
                 ))
             .toList();
+      }
+
+      setState(() {
+        _searchResults = finalResults;
         _isLoading = false;
       });
     } catch (_) {
@@ -66,51 +153,225 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
+  String _cleanText(String text) {
+    return text
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&#039;', "'")
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final trendingAsync = ref.watch(trendingSongsProvider);
+
     return Scaffold(
       backgroundColor: context.colorScheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: RaagaSearchBar(
-          controller: _searchController,
-          hintText: 'Search songs, albums, artists...',
-          onChanged: _performSearch,
-          onClear: () => _performSearch(''),
+        title: Text(
+          'Search',
+          style: context.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: context.colorScheme.onSurface,
+          ),
         ),
       ),
-      body: _isLoading
-          ? const Center(child: RaagaCircularIndicator())
-          : _searchController.text.isEmpty
-              ? const RaagaEmptyState(
-                  title: 'Search Local Music',
-                  description: 'Type matching titles, artists, or folders.',
-                  icon: Icons.search_rounded,
-                )
-              : _searchResults.isEmpty
-                  ? const RaagaEmptyState(
-                      title: 'No Matches Found',
-                      description: 'Try searching with different spelling.',
-                      icon: Icons.search_off_rounded,
-                    )
-                  : ListView.builder(
-                      itemCount: _searchResults.length,
-                      itemBuilder: (context, index) {
-                        final song = _searchResults[index];
-                        return ListTile(
-                          leading: const Icon(Icons.music_note_rounded),
-                          title: _highlightMatches(song.title, _searchController.text),
-                          subtitle: Text('${song.artist} • ${song.album}'),
-                          onTap: () {
-                            ref.read(currentSongProvider.notifier).state = song;
-                            ref.read(audioEngineProvider).setSource(song.sourceUrl).then((_) {
-                              ref.read(audioEngineProvider).play();
-                            });
-                          },
-                        );
-                      },
-                    ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              onSubmitted: (term) {
+                _saveSearchTerm(term);
+                _performSearch(term);
+              },
+              style: TextStyle(color: context.colorScheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Search songs, artists, albums...',
+                hintStyle: TextStyle(color: context.colorScheme.onSurface.withOpacity(0.40)),
+                prefixIcon: Icon(Icons.search_rounded, color: context.colorScheme.onSurface.withOpacity(0.60)),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: () {
+                          _searchController.clear();
+                          _performSearch('');
+                        },
+                      )
+                    : IconButton(
+                        icon: Icon(Icons.mic_none_rounded, color: context.colorScheme.onSurface.withOpacity(0.60)),
+                        onPressed: () {},
+                      ),
+                filled: true,
+                fillColor: context.colorScheme.surfaceContainerHigh,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: RaagaCircularIndicator())
+                : _searchController.text.isNotEmpty
+                    ? _searchResults.isEmpty
+                        ? const RaagaEmptyState(
+                            title: 'No Matches Found',
+                            description: 'Try searching with different keywords.',
+                            icon: Icons.search_off_rounded,
+                          )
+                        : ListView.builder(
+                            itemCount: _searchResults.length,
+                            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                            itemBuilder: (context, index) {
+                              final song = _searchResults[index];
+                              final cleanTitle = _cleanText(song.title);
+                              final cleanArtist = _cleanText(song.artist);
+                              final cleanAlbum = _cleanText(song.album);
+
+                              return ListTile(
+                                leading: RaagaArtwork(
+                                  imageUrl: song.artworkUrl,
+                                  size: 48,
+                                  radius: 8,
+                                ),
+                                title: _highlightMatches(cleanTitle, _searchController.text),
+                                subtitle: Text('$cleanArtist • $cleanAlbum'),
+                                onTap: () {
+                                  _saveSearchTerm(_searchController.text.isNotEmpty ? _searchController.text : cleanTitle);
+                                  ref.read(playbackSessionProvider.notifier).playSong(
+                                    song,
+                                    queue: _searchResults,
+                                    index: index,
+                                  );
+                                },
+                              );
+                            },
+                          )
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          ref.invalidate(trendingSongsProvider);
+                          await ref.read(trendingSongsProvider.future);
+                        },
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_recentSearches.isNotEmpty) ...[
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Recent Searches',
+                                      style: context.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: _clearRecentSearches,
+                                      child: Text(
+                                        'Clear All',
+                                        style: TextStyle(
+                                          color: context.colorScheme.primary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.xs),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: _recentSearches.map((term) {
+                                    return ActionChip(
+                                      label: Text(_cleanText(term)),
+                                      labelStyle: TextStyle(
+                                        color: context.colorScheme.onSurface,
+                                        fontSize: 13,
+                                      ),
+                                      backgroundColor: context.colorScheme.surfaceContainerHigh,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      onPressed: () {
+                                        _searchController.text = term;
+                                        _performSearch(term);
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                                const SizedBox(height: AppSpacing.xl),
+                              ],
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Trending Now',
+                                    style: context.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                                    tooltip: 'Refresh Trending',
+                                    onPressed: () {
+                                      ref.invalidate(trendingSongsProvider);
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              trendingAsync.when(
+                                loading: () => const Center(child: RaagaCircularIndicator()),
+                                error: (_, __) => const Text('No trending songs available'),
+                                data: (songs) {
+                                  return Column(
+                                    children: songs.take(15).map((song) {
+                                      final cleanTitle = _cleanText(song.title);
+                                      final cleanArtist = _cleanText(song.artist);
+
+                                      return ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: RaagaArtwork(
+                                          imageUrl: song.artworkUrl,
+                                          size: 48,
+                                          radius: 8,
+                                        ),
+                                        title: Text(
+                                          cleanTitle,
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                        subtitle: Text(cleanArtist),
+                                        onTap: () {
+                                          _saveSearchTerm(cleanTitle);
+                                          ref.read(playbackSessionProvider.notifier).playSong(
+                                            song,
+                                            queue: songs,
+                                            index: songs.indexOf(song),
+                                          );
+                                        },
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+          ),
+        ],
+      ),
     );
   }
 

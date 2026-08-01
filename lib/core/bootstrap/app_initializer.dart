@@ -17,6 +17,9 @@ class AppInitializer {
   }
 
   Future<void> initialize() async {
+    // 0. Initialize FTS virtual tables
+    await database.initFts();
+
     // 1. Initialise local audio configurations
     // The AudioEngine handles inner audio session mappings on start
 
@@ -24,6 +27,7 @@ class AppInitializer {
     await PermissionService.checkAndRequestAll();
 
     // 3. Restore queue items and active track states if present
+    QueueManager().setRestoreService(_restoreService);
     final restoredQueue = await _restoreService.restoreQueue();
     if (restoredQueue.isNotEmpty) {
       QueueManager().addAll(restoredQueue);

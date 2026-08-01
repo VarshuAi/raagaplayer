@@ -42,25 +42,6 @@ class AppearanceSettingsScreen extends ConsumerWidget {
             ),
             onTap: () {},
           ),
-          const Divider(),
-          ListTile(
-            title: const Text('Blur Intensity'),
-            subtitle: Slider(
-              value: settings.blurStrength,
-              onChanged: (val) {
-                notifier.updateSettings(settings.copyWith(blurStrength: val));
-              },
-            ),
-          ),
-          ListTile(
-            title: const Text('Rounded Corner Radius'),
-            subtitle: Slider(
-              value: settings.cornerRadius,
-              onChanged: (val) {
-                notifier.updateSettings(settings.copyWith(cornerRadius: val));
-              },
-            ),
-          ),
         ],
       ),
     );

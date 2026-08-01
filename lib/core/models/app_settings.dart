@@ -11,6 +11,7 @@ class AppSettings {
   final bool scanOnStartup;
   final double hapticStrength;
   final List<String> scanFolders;
+  final String audioQuality; // '96kbps', '160kbps', '320kbps'
 
   const AppSettings({
     this.themeMode = 'dark',
@@ -25,6 +26,7 @@ class AppSettings {
     this.scanOnStartup = false,
     this.hapticStrength = 1.0,
     this.scanFolders = const [],
+    this.audioQuality = '320kbps',
   });
 
   AppSettings copyWith({
@@ -40,6 +42,7 @@ class AppSettings {
     bool? scanOnStartup,
     double? hapticStrength,
     List<String>? scanFolders,
+    String? audioQuality,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -54,6 +57,7 @@ class AppSettings {
       scanOnStartup: scanOnStartup ?? this.scanOnStartup,
       hapticStrength: hapticStrength ?? this.hapticStrength,
       scanFolders: scanFolders ?? this.scanFolders,
+      audioQuality: audioQuality ?? this.audioQuality,
     );
   }
 
@@ -71,6 +75,7 @@ class AppSettings {
       'scanOnStartup': scanOnStartup,
       'hapticStrength': hapticStrength,
       'scanFolders': scanFolders,
+      'audioQuality': audioQuality,
     };
   }
 
@@ -88,6 +93,7 @@ class AppSettings {
       scanOnStartup: json['scanOnStartup'] ?? false,
       hapticStrength: (json['hapticStrength'] ?? 1.0) as double,
       scanFolders: List<String>.from(json['scanFolders'] ?? []),
+      audioQuality: json['audioQuality'] ?? '320kbps',
     );
   }
 }

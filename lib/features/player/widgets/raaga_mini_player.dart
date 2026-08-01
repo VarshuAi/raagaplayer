@@ -11,6 +11,7 @@ import '../../../domain/entities/song.dart';
 import '../provider/playback_provider.dart';
 import '../provider/artwork_provider.dart';
 import '../../../core/audio/audio_state.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class RaagaMiniPlayer extends ConsumerWidget {
   final Song song;
@@ -88,16 +89,37 @@ class RaagaMiniPlayer extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    RaagaIconButton(
-                      icon: isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
-                      size: 24,
-                      onTap: () {
-                        if (isPlayingVal) {
-                          engine.pause();
-                        } else {
-                          engine.play();
-                        }
-                      },
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RaagaIconButton(
+                          icon: Icons.skip_previous_rounded,
+                          size: 22,
+                          onTap: () {
+                            ref.read(playbackSessionProvider.notifier).playPrevious();
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        RaagaIconButton(
+                          icon: isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
+                          size: 26,
+                          onTap: () {
+                            if (isPlayingVal) {
+                              engine.pause();
+                            } else {
+                              engine.play();
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        RaagaIconButton(
+                          icon: Icons.skip_next_rounded,
+                          size: 22,
+                          onTap: () {
+                            ref.read(playbackSessionProvider.notifier).playNext();
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),

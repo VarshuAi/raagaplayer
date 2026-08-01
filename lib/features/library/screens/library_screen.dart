@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
 import 'songs_tab.dart';
+import 'favorites_tab.dart';
 import 'albums_tab.dart';
 import 'artists_tab.dart';
 import 'playlists_tab.dart';
@@ -20,12 +21,13 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   late TabController _tabController;
 
   final List<String> _tabs = [
+    'Favorites',
     'Songs',
     'Albums',
     'Artists',
-    'Playlists',
+    'Folders',
     'Genres',
-    'Folders'
+    'Playlists',
   ];
 
   @override
@@ -46,35 +48,53 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       backgroundColor: context.colorScheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        elevation: 0,
         title: Text(
           'Library',
           style: context.textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.bold,
+            color: context.colorScheme.onSurface,
           ),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_rounded),
-            onPressed: () => context.push('/library/settings'),
+            onPressed: () => context.push('/settings'),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabs: _tabs.map((name) => Tab(text: name)).toList(),
-          labelStyle: context.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
-          unselectedLabelStyle: context.textTheme.labelLarge,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: TabBar(
+            controller: _tabController,
+            isScrollable: true,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicator: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: context.colorScheme.primary,
+            ),
+            labelColor: Colors.white,
+            unselectedLabelColor: context.colorScheme.onSurface.withOpacity(0.60),
+            dividerColor: Colors.transparent,
+            tabs: _tabs.map((name) => Tab(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            )).toList(),
+          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: const [
+          FavoritesTab(),
           SongsTab(),
           AlbumsTab(),
           ArtistsTab(),
-          PlaylistsTab(),
-          GenresTab(),
           FoldersTab(),
+          GenresTab(),
+          PlaylistsTab(),
         ],
       ),
     );

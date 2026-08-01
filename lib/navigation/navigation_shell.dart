@@ -1,74 +1,129 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/icons/raaga_icons.dart';
-import '../core/extensions/context_extensions.dart';
+import 'package:go_router/go_router.dart';
 import '../features/player/provider/player_provider.dart';
 import '../features/player/widgets/raaga_mini_player.dart';
 import '../features/player/screens/now_playing_screen.dart';
 
-class NavigationShell extends ConsumerWidget {
-  final Widget child;
-  final int selectedIndex;
-  final ValueChanged<int> onDestinationSelected;
+import '../features/home/screens/home_screen.dart';
+
+class NavigationShell extends ConsumerStatefulWidget {
+  final StatefulNavigationShell navigationShell;
 
   const NavigationShell({
     super.key,
-    required this.child,
-    required this.selectedIndex,
-    required this.onDestinationSelected,
+    required this.navigationShell,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentSong = ref.watch(currentSongProvider);
+  ConsumerState<NavigationShell> createState() => _NavigationShellState();
+}
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: currentSong != null ? 80.0 : 0.0,
+class _NavigationShellState extends ConsumerState<NavigationShell> {
+  final List<int> _tabHistory = [0];
+
+  void _onTabSelected(int index) {
+    if (index == 0 && widget.navigationShell.currentIndex == 0) {
+      refreshHomeFeed(ref);
+    }
+
+    if (widget.navigationShell.currentIndex != index) {
+      _tabHistory.removeWhere((i) => i == index);
+      _tabHistory.add(index);
+      widget.navigationShell.goBranch(index);
+    }
+  }
+
+  bool _handleBackPress() {
+    // 1. If tab history has previous tabs, redirect to previous tab
+    if (_tabHistory.length > 1) {
+      setState(() {
+        _tabHistory.removeLast(); // Remove current tab
+        final previousTab = _tabHistory.last;
+        widget.navigationShell.goBranch(previousTab);
+      });
+      return false; // Intercepted and switched tab
+    }
+
+    // 2. If not on Home tab, fallback to Home tab
+    if (widget.navigationShell.currentIndex != 0) {
+      setState(() {
+        _tabHistory.clear();
+        _tabHistory.add(0);
+        widget.navigationShell.goBranch(0);
+      });
+      return false;
+    }
+
+    // 3. On Home tab with no sub-pages, allow app exit
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentSong = ref.watch(currentSongProvider);
+    final selectedIndex = widget.navigationShell.currentIndex;
+
+    return WillPopScope(
+      onWillPop: () async {
+        final allowAppExit = _handleBackPress();
+        return allowAppExit;
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: currentSong != null ? 72.0 : 0.0,
+                ),
+                child: widget.navigationShell,
               ),
-              child: child,
             ),
-          ),
-          if (currentSong != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 8.0,
-              child: RaagaMiniPlayer(
-                song: currentSong,
-                onTap: () {
-                  // Navigate to Now Playing Screen using bottom sheet or full push transition
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const NowPlayingScreen(),
-                    ),
-                  );
-                },
+            if (currentSong != null)
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 4.0,
+                child: RaagaMiniPlayer(
+                  song: currentSong,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const NowPlayingScreen(),
+                      ),
+                    );
+                  },
+                ),
               ),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: _onTabSelected,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_rounded),
+              label: 'Home',
             ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: onDestinationSelected,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(RaagaIcons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(RaagaIcons.search),
-            label: 'Search',
-          ),
-          NavigationDestination(
-            icon: Icon(RaagaIcons.library),
-            label: 'Library',
-          ),
-        ],
+            NavigationDestination(
+              icon: Icon(Icons.search_rounded),
+              label: 'Search',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.library_music_rounded),
+              label: 'Library',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.download_for_offline_rounded),
+              label: 'Downloads',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_rounded),
+              label: 'Settings',
+            ),
+          ],
+        ),
       ),
     );
   }

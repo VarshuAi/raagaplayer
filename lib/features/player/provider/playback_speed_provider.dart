@@ -8,12 +8,8 @@ class PlaybackSpeedNotifier extends StateNotifier<double> {
 
   Future<void> setSpeed(double speed) async {
     state = speed;
-    // Set the playback speed multiplier on the AudioEngine instance
-    // Note: just_audio supports speed adjustment via setSpeed
     final engine = _ref.read(audioEngineProvider);
-    // Since audioEngine is a JustAudioEngine, we can access the underlying player or method
-    // In our JustAudioEngine, we can invoke setVolume or custom player parameters.
-    // For now, we update local state speed multiplier.
+    await engine.setSpeed(speed);
   }
 }
 

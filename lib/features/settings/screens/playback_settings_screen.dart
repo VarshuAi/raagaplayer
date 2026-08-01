@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../provider/settings_provider.dart';
 import '../widgets/settings_tile.dart';
+import '../../player/widgets/audio_quality_sheet.dart';
 
 class PlaybackSettingsScreen extends ConsumerWidget {
   const PlaybackSettingsScreen({super.key});
@@ -11,6 +12,12 @@ class PlaybackSettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
+    final qualityLabel = settings.audioQuality == '320kbps'
+        ? 'High (320 kbps) - HD Crystal Clear'
+        : settings.audioQuality == '160kbps'
+            ? 'Medium (160 kbps) - Standard Quality'
+            : 'Low (96 kbps) - Data Saver';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Playback'),
@@ -18,6 +25,20 @@ class PlaybackSettingsScreen extends ConsumerWidget {
       ),
       body: ListView(
         children: [
+          SettingsTile(
+            leadingIcon: Icons.high_quality_rounded,
+            title: 'Audio Quality',
+            subtitle: qualityLabel,
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const AudioQualitySheet(),
+              );
+            },
+          ),
+          const Divider(),
           SettingsTile(
             leadingIcon: Icons.hdr_strong_rounded,
             title: 'Gapless Playback',

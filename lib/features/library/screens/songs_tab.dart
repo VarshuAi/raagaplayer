@@ -6,9 +6,10 @@ import '../../../core/widgets/indicators/raaga_indicators.dart';
 import '../../../core/audio/queue_manager.dart';
 import '../../../domain/entities/song.dart';
 import '../widgets/media_list_item.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../player/provider/playback_provider.dart';
 import '../../player/provider/player_provider.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class SongsTab extends ConsumerStatefulWidget {
   const SongsTab({super.key});

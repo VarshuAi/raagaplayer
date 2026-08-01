@@ -6,27 +6,43 @@ import '../provider/playback_provider.dart';
 import '../../../core/services/haptic_service.dart';
 
 class PlayerProgressBar extends ConsumerWidget {
-  const PlayerProgressBar({super.key});
+  final Color? ambientColor;
+
+  const PlayerProgressBar({
+    super.key,
+    this.ambientColor,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
     final duration = ref.watch(playbackDurationProvider).value ?? Duration.zero;
     final engine = ref.watch(audioEngineProvider);
+    final activeColor = ambientColor ?? context.colorScheme.primary;
 
     final positionMs = position.inMilliseconds.toDouble();
     final durationMs = duration.inMilliseconds.toDouble();
 
     return Column(
       children: [
-        Slider(
-          value: positionMs.clamp(0.0, durationMs > 0 ? durationMs : 1.0),
-          min: 0.0,
-          max: durationMs > 0 ? durationMs : 1.0,
-          onChanged: (value) {
-            HapticService.selection();
-            engine.seek(Duration(milliseconds: value.toInt()));
-          },
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: activeColor,
+            thumbColor: activeColor,
+            inactiveTrackColor: Colors.white.withOpacity(0.2),
+            overlayColor: activeColor.withOpacity(0.2),
+            trackHeight: 3.5,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+          ),
+          child: Slider(
+            value: positionMs.clamp(0.0, durationMs > 0 ? durationMs : 1.0),
+            min: 0.0,
+            max: durationMs > 0 ? durationMs : 1.0,
+            onChanged: (value) {
+              HapticService.selection();
+              engine.seek(Duration(milliseconds: value.toInt()));
+            },
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),

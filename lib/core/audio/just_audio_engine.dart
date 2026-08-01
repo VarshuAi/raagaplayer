@@ -6,8 +6,10 @@ import 'raaga_audio_handler.dart';
 import '../error/result.dart';
 import '../error/failures.dart';
 
+import '../playback/playback_engine.dart';
+
 class JustAudioEngine implements AudioEngine {
-  final AudioPlayer _player = AudioPlayer();
+  AudioPlayer get _player => PlaybackEngine.sharedPlayer;
   late final RaagaAudioHandler _audioHandler;
 
   final _playbackStateController = StreamController<RaagaPlaybackState>.broadcast();
@@ -106,6 +108,16 @@ class JustAudioEngine implements AudioEngine {
       return const Result.success(null);
     } catch (e) {
       return Result.failure(AudioPlaybackFailure("Failed to change volume: $e"));
+    }
+  }
+
+  @override
+  Future<Result<void, AudioPlaybackFailure>> setSpeed(double speed) async {
+    try {
+      await _player.setSpeed(speed);
+      return const Result.success(null);
+    } catch (e) {
+      return Result.failure(AudioPlaybackFailure("Failed to change playback speed: $e"));
     }
   }
 

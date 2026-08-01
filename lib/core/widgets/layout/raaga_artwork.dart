@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../design_tokens/radius.dart';
 import '../../extensions/context_extensions.dart';
 import '../../config/app_assets.dart';
+import '../indicators/raaga_indicators.dart';
 
 class RaagaArtwork extends StatelessWidget {
   final String? imageUrl;
@@ -31,17 +33,62 @@ class RaagaArtwork extends StatelessWidget {
         width: size,
         height: size,
         color: context.colorScheme.surfaceContainerHigh,
-        child: imageUrl != null && imageUrl!.isNotEmpty
-            ? Image.network(
-                imageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return _buildLoading();
-                },
-              )
-            : _buildPlaceholder(),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _buildImageWidget(context),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: size > 80 ? 8 : 5,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(effectiveRadius),
+                    bottomRight: const Radius.circular(10),
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.25),
+                    width: 0.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.music_note_rounded,
+                      size: size > 80 ? 10 : 8,
+                      color: context.colorScheme.primary,
+                    ),
+                    if (size > 70) ...[
+                      const SizedBox(width: 3),
+                      const Text(
+                        'A1 RAAGA',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -83,13 +130,31 @@ class RaagaArtwork extends StatelessWidget {
 
   Widget _buildLoading() {
     return Center(
-      child: SizedBox(
-        width: size * 0.25,
-        height: size * 0.25,
-        child: const CircularProgressIndicator(
-          strokeWidth: 2.0,
-        ),
-      ),
+      child: RaagaCircularIndicator(size: size * 0.3),
+    );
+  }
+
+  Widget _buildImageWidget(BuildContext context) {
+    if (imageUrl == null || imageUrl!.isEmpty) return _buildPlaceholder();
+
+    final url = imageUrl!;
+    if (url.startsWith('/') || url.startsWith('file://') || url.contains(':\\')) {
+      final cleanPath = url.replaceFirst('file://', '');
+      return Image.file(
+        File(cleanPath),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+      );
+    }
+
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return _buildLoading();
+      },
     );
   }
 }

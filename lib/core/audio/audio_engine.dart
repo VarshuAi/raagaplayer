@@ -20,5 +20,6 @@ abstract class AudioEngine {
   Future<Result<void, AudioPlaybackFailure>> seek(Duration position);
   Future<Result<void, AudioPlaybackFailure>> stop();
   Future<Result<void, AudioPlaybackFailure>> setVolume(double volume);
+  Future<Result<void, AudioPlaybackFailure>> setSpeed(double speed);
   Future<void> dispose();
 }

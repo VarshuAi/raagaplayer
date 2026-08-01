@@ -7,4 +7,5 @@ class AppRoutes {
   static const String player = '/player';
   static const String settings = '/settings';
   static const String designSystem = '/design-system';
+  static const String auth = '/auth';
 }

@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/library_manager.dart';
 import '../../../core/widgets/layout/status_views.dart';
 import '../../../core/widgets/indicators/raaga_indicators.dart';
-import '../../home/screens/home_screen.dart';
-import '../../../domain/entities/song.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
+import '../../../music/domain/entities/song.dart';
 import '../widgets/media_list_item.dart';
 
-final smartPlaylistProvider = FutureProvider.family<List<Song>, String>((ref, type) async {
+final smartPlaylistProvider =
+    FutureProvider.family<List<Song>, String>((ref, type) async {
   final db = ref.watch(databaseProvider);
   final manager = LibraryManager(database: db);
   return manager.getSmartPlaylist(type);
@@ -40,7 +41,8 @@ class SmartPlaylistScreen extends ConsumerWidget {
           if (songs.isEmpty) {
             return const RaagaEmptyState(
               title: 'Empty Smart Playlist',
-              description: 'No matching tracks found for this catalog filter.',
+              description:
+                  'No matching tracks found for this catalog filter.',
               icon: Icons.playlist_remove_rounded,
             );
           }

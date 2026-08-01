@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/app_settings.dart';
-import '../../home/screens/home_screen.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
   final Ref _ref;

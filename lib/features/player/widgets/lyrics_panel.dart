@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../../../core/extensions/context_extensions.dart';
+import '../../../core/database/app_database.dart';
+import '../../../music/presentation/providers/music_providers.dart';
+import '../../lyrics/data/services/lyrics_service.dart';
 import '../provider/lyrics_provider.dart';
 import '../provider/playback_provider.dart';
+import '../provider/player_provider.dart';
+import '../provider/artwork_provider.dart';
 
 class LyricsPanel extends ConsumerStatefulWidget {
   const LyricsPanel({super.key});
@@ -13,6 +19,8 @@ class LyricsPanel extends ConsumerStatefulWidget {
 
 class _LyricsPanelState extends ConsumerState<LyricsPanel> {
   final ScrollController _scrollController = ScrollController();
+  String? _lastLoadedSongId;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -20,62 +28,103 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     super.dispose();
   }
 
+  Future<void> _loadSongLyrics(dynamic song) async {
+    if (song == null || song.id == _lastLoadedSongId || _isLoading) return;
+    _lastLoadedSongId = song.id;
+    setState(() => _isLoading = true);
+
+    try {
+      final db = ref.read(databaseProvider);
+      final service = LyricsService(database: db, httpClient: http.Client());
+      final lyricsData = await service.getLyrics(
+        songId: song.id,
+        title: song.title,
+        artist: song.artist,
+      );
+
+      if (mounted) {
+        ref.read(lyricsProvider).loadLyrics(lyricsData.lines);
+        setState(() => _isLoading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentSong = ref.watch(currentSongProvider);
     final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
-    final lyricsNotifier = ref.watch(lyricsProvider); // Lyrics state manager
+    final lyricsNotifier = ref.watch(lyricsProvider);
     final engine = ref.watch(audioEngineProvider);
+    final palette = ref.watch(artworkPaletteProvider);
+    final ambientColor = palette.vibrantColor ?? palette.dominantColor;
 
-    // Auto-scroll lyrics callback as index increments
+    if (currentSong != null && currentSong.id != _lastLoadedSongId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadSongLyrics(currentSong);
+      });
+    }
+
     final lyrics = lyricsNotifier.lyrics;
     final activeIndex = lyricsNotifier.currentLineIndex;
 
-    // Load mock synced lyrics for testing if empty
-    if (lyrics.isEmpty) {
-      ref.read(lyricsProvider).loadLyrics([
-        LyricLine(const Duration(seconds: 0), "Intro (Instrumental)"),
-        LyricLine(const Duration(seconds: 5), "Welcome to Raaga Premium Player"),
-        LyricLine(const Duration(seconds: 12), "Experience the smooth Material 3 visual curves"),
-        LyricLine(const Duration(seconds: 20), "Listening to local scanned library audio tracks"),
-        LyricLine(const Duration(seconds: 28), "Frosted glass container layers blending dynamically"),
-        LyricLine(const Duration(seconds: 35), "Enjoy gapless local files playback indexing"),
-        LyricLine(const Duration(seconds: 44), "Outro (Instrumental fading out...)"),
-      ]);
-    }
-
-    // Trigger updates on playback position shifts
     ref.read(lyricsProvider).updatePosition(position);
 
-    if (lyrics.isEmpty) {
-      return const Center(child: Text("Lyrics not available"));
-    }
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        Expanded(
+          child: _isLoading && lyrics.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : lyrics.isEmpty
+                  ? Center(
+                      child: Text(
+                        "Lyrics not available for this track",
+                        style: context.textTheme.titleMedium?.copyWith(
+                          color: context.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
+                      itemCount: lyrics.length,
+                      itemBuilder: (context, index) {
+                        final line = lyrics[index];
+                        final isActive = index == activeIndex;
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 24.0),
-      itemCount: lyrics.length,
-      itemBuilder: (context, index) {
-        final line = lyrics[index];
-        final isActive = index == activeIndex;
-
-        return GestureDetector(
-          onTap: () {
-            engine.seek(line.timeStamp);
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12.0),
-            child: Text(
-              line.text,
-              textAlign: TextAlign.center,
-              style: context.textTheme.headlineSmall?.copyWith(
-                color: isActive ? context.colorScheme.primary : context.colorScheme.onSurface.withOpacity(0.38),
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                fontSize: isActive ? 24 : 20,
-              ),
-            ),
-          ),
-        );
-      },
+                        return GestureDetector(
+                          onTap: () {
+                            engine.seek(line.timeStamp);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12.0),
+                            child: Text(
+                              line.text,
+                              textAlign: TextAlign.center,
+                              style: context.textTheme.headlineSmall?.copyWith(
+                                color: isActive
+                                    ? ambientColor
+                                    : context.colorScheme.onSurface.withOpacity(0.38),
+                                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                fontSize: isActive ? 24 : 18,
+                                shadows: isActive
+                                    ? [
+                                        Shadow(
+                                          color: ambientColor.withOpacity(0.5),
+                                          blurRadius: 16,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 }

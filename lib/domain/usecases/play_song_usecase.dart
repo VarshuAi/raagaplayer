@@ -8,7 +8,7 @@ class PlaySongUseCase {
 
   PlaySongUseCase(this.repository);
 
-  Future<Result<Song, ServerFailure>> execute(String songId) async {
+  Future<Result<Song, Failure>> execute(String songId) async {
     return repository.getSongDetails(songId);
   }
 }

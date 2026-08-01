@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/layout/raaga_artwork.dart';
 import '../provider/artwork_provider.dart';
@@ -26,8 +27,12 @@ class PlayerArtworkView extends ConsumerWidget {
       onHorizontalDragEnd: (details) {
         if (details.primaryVelocity == null) return;
         if (details.primaryVelocity! < 0) {
+          // Swipe Left = Next song (like Spotify layout)
+          HapticFeedback.mediumImpact();
           onSwipeLeft();
         } else if (details.primaryVelocity! > 0) {
+          // Swipe Right = Previous song
+          HapticFeedback.mediumImpact();
           onSwipeRight();
         }
       },

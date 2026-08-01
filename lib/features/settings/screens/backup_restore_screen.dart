@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import '../../home/screens/home_screen.dart';
+import '../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/restore_service.dart';
 import '../../../core/widgets/feedback/raaga_feedback.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class BackupRestoreScreen extends ConsumerStatefulWidget {
   const BackupRestoreScreen({super.key});

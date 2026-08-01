@@ -4,30 +4,42 @@ import '../../../core/widgets/buttons/raaga_buttons.dart';
 import '../../../core/widgets/layout/animation_presets.dart';
 import '../../../core/icons/raaga_icons.dart';
 import '../../../core/extensions/context_extensions.dart';
+import '../../../core/playback/playback_session.dart';
 import '../provider/playback_provider.dart';
-import '../provider/queue_provider.dart';
 import '../../../core/audio/audio_state.dart';
 import '../../../core/services/haptic_service.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 
 class PlaybackControls extends ConsumerWidget {
-  const PlaybackControls({super.key});
+  final Color? ambientColor;
+
+  const PlaybackControls({
+    super.key,
+    this.ambientColor,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isPlayingVal = ref.watch(playbackStateProvider).value == RaagaPlaybackState.playing;
+    final session = ref.watch(playbackSessionProvider);
+    final isPlayingVal = session.state == RaagaPlaybackState.playing;
+    final isShuffle = session.shuffle;
+    final repeatMode = session.repeatMode;
     final engine = ref.watch(audioEngineProvider);
-    final queue = ref.watch(queueProvider);
-    final indexNotifier = ref.watch(queueProvider.notifier);
+    final activeColor = ambientColor ?? context.colorScheme.primary;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         // Shuffle toggle button
         IconButton(
-          icon: const Icon(RaagaIcons.shuffle),
+          icon: Icon(
+            RaagaIcons.shuffle,
+            color: isShuffle ? activeColor : null,
+          ),
+          tooltip: 'Toggle Shuffle',
           onPressed: () {
             HapticService.light();
-            indexNotifier.shuffle();
+            ref.read(playbackSessionProvider.notifier).toggleShuffle();
           },
         ),
         // Previous song button
@@ -36,10 +48,10 @@ class PlaybackControls extends ConsumerWidget {
           size: 32,
           onTap: () {
             HapticService.medium();
-            indexNotifier.remove(0); // placeholder skip previous trigger
+            ref.read(playbackSessionProvider.notifier).playPrevious();
           },
         ),
-        // Play / Pause button
+        // Play / Pause button dynamically styled with ambient color
         AnimatedTap(
           onTap: () {
             HapticService.medium();
@@ -54,12 +66,19 @@ class PlaybackControls extends ConsumerWidget {
             height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: context.colorScheme.primary,
+              color: activeColor,
+              boxShadow: [
+                BoxShadow(
+                  color: activeColor.withOpacity(0.4),
+                  blurRadius: 18,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
             child: Icon(
               isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
               size: 36,
-              color: context.colorScheme.onPrimary,
+              color: Colors.white,
             ),
           ),
         ),
@@ -69,14 +88,21 @@ class PlaybackControls extends ConsumerWidget {
           size: 32,
           onTap: () {
             HapticService.medium();
-            indexNotifier.remove(0); // placeholder skip next trigger
+            ref.read(playbackSessionProvider.notifier).playNext();
           },
         ),
-        // Repeat toggle button
+        // Repeat mode toggle button
         IconButton(
-          icon: const Icon(RaagaIcons.repeat),
+          icon: Icon(
+            repeatMode == AudioRepeatMode.one
+                ? Icons.repeat_one_rounded
+                : (repeatMode == AudioRepeatMode.all ? Icons.repeat_on_rounded : Icons.repeat_rounded),
+            color: repeatMode != AudioRepeatMode.off ? activeColor : null,
+          ),
+          tooltip: 'Toggle Repeat Mode',
           onPressed: () {
             HapticService.light();
+            ref.read(playbackSessionProvider.notifier).toggleRepeatMode();
           },
         ),
       ],

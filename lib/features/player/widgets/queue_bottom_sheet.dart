@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/sheets/raaga_bottom_sheet.dart';
 import '../../../core/extensions/context_extensions.dart';
 import '../../../core/widgets/layout/raaga_artwork.dart';
-import '../../../domain/entities/song.dart';
 import '../provider/queue_provider.dart';
 import '../provider/player_provider.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 import '../../../core/audio/queue_manager.dart';
 
 class QueueBottomSheet extends ConsumerWidget {
@@ -65,6 +65,14 @@ class QueueBottomSheet extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: const Icon(Icons.drag_handle_rounded),
+                      onTap: () {
+                        ref.read(playbackSessionProvider.notifier).playSong(
+                          song,
+                          queue: queue,
+                          index: index,
+                        );
+                        Navigator.of(context).pop();
+                      },
                     ),
                   );
                 },
