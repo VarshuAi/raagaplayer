@@ -358,25 +358,25 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
         logToFile('[playSong] Starting stream resolution for song: ${song.id}...');
 
         StreamManifest? manifest;
-        // Try Android client first
+        // Try Android VR client first (works without 403 on client side)
         try {
           manifest = await ytExplode.videos.streams.getManifest(
             song.id,
-            ytClients: [YoutubeApiClient.android],
+            ytClients: [YoutubeApiClient.androidVr],
           ).timeout(const Duration(seconds: 15));
         } catch (e) {
-          logToFile('[playSong] Android stream resolution failed: $e. Trying Android VR...');
+          logToFile('[playSong] Android VR stream resolution failed: $e. Trying Android standard...');
         }
 
-        // Try Android VR client next
+        // Try Android standard client next
         if (manifest == null) {
           try {
             manifest = await ytExplode.videos.streams.getManifest(
               song.id,
-              ytClients: [YoutubeApiClient.androidVr],
+              ytClients: [YoutubeApiClient.android],
             ).timeout(const Duration(seconds: 15));
           } catch (e) {
-            logToFile('[playSong] Android VR stream resolution failed: $e. Trying standard client fallback...');
+            logToFile('[playSong] Android standard stream resolution failed: $e. Trying standard client fallback...');
           }
         }
 

@@ -52,14 +52,7 @@ class PlaybackEngine {
 
   Future<void> setSource(String sourceUrl) async {
     if (sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://')) {
-      await _player.setUrl(
-        sourceUrl,
-        headers: const {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
-          'Referer': 'https://www.youtube.com/',
-          'Origin': 'https://www.youtube.com',
-        },
-      );
+      await _player.setUrl(sourceUrl);
     } else if (sourceUrl.isNotEmpty) {
       await _player.setFilePath(sourceUrl);
     } else {
