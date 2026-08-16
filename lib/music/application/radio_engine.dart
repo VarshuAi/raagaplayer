@@ -1,5 +1,6 @@
 import '../../../core/database/app_database.dart' as db;
 import '../domain/entities/song.dart';
+import '../data/datasource/remote/ytmusic_client.dart';
 import 'recommendation_engine.dart';
 
 class RadioEngine {
@@ -9,6 +10,28 @@ class RadioEngine {
   RadioEngine(this._db) : _recEngine = RecommendationEngine(_db);
 
   Future<List<Song>> generateRadioQueue(Song seedSong, {int limit = 20}) async {
+    // If the seed song is online, fetch high-quality online recommendations directly
+    if (!seedSong.isLocal && seedSong.id.isNotEmpty && seedSong.id.length == 11) {
+      try {
+        final onlineRecs = await fetchRecommendations(seedSong.id);
+        if (onlineRecs.isNotEmpty) {
+          return onlineRecs.map((r) => Song(
+            id: r['id'] as String,
+            title: r['title'] as String,
+            artist: r['artist'] as String,
+            album: '',
+            artworkUrl: r['artworkUrl'] as String,
+            sourceUrl: '/api/stream?id=${r['id']}',
+            duration: Duration(seconds: r['durationSeconds'] as int),
+            isLocal: false,
+            isFavorite: false,
+          )).toList();
+        }
+      } catch (e) {
+        print('[RadioEngine] Failed to generate online recommendations: $e');
+      }
+    }
+
     final allSongs = await _db.select(_db.songs).get();
     if (allSongs.isEmpty) return [];
 

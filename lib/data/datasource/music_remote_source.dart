@@ -24,39 +24,56 @@ class MusicRemoteDataSourceImpl implements MusicRemoteDataSource {
     try {
       final response = await client.get(uri);
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final dynamic decoded = json.decode(response.body);
         final List<SongModel> songs = [];
         
-        if (data['success'] == true && data['shelves'] != null) {
-          final List<dynamic> shelves = data['shelves'];
-          for (final shelf in shelves) {
+        if (decoded is List) {
+          for (final shelf in decoded) {
             final List<dynamic> items = shelf['items'] ?? [];
             for (final item in items) {
-              if (item['type'] == 'song') {
-                songs.add(SongModel(
-                  id: item['id'] ?? '',
-                  title: item['title'] ?? '',
-                  artist: item['artist'] ?? 'Unknown Artist',
-                  album: 'Single',
-                  artworkUrl: item['thumbnail'] ?? '',
-                  sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${item['id']}',
-                  duration: const Duration(minutes: 3),
-                ));
-              }
+              songs.add(SongModel(
+                id: item['id'] ?? '',
+                title: item['title'] ?? '',
+                artist: _cleanArtistName(item['artist'] ?? item['subtitle']),
+                album: item['album'] ?? 'Single',
+                artworkUrl: item['artworkUrl'] ?? item['thumbnail'] ?? '',
+                sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${item['id']}',
+                duration: Duration(seconds: item['duration'] ?? 180),
+              ));
             }
           }
-        } else if (data['success'] == true && data['results'] != null) {
-          final List<dynamic> results = data['results'];
-          for (final r in results) {
-            songs.add(SongModel(
-              id: r['id'] ?? '',
-              title: r['title'] ?? '',
-              artist: r['artist'] ?? 'Unknown Artist',
-              album: 'Single',
-              artworkUrl: r['thumbnail'] ?? '',
-              sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${r['id']}',
-              duration: const Duration(minutes: 3),
-            ));
+        } else if (decoded is Map<String, dynamic>) {
+          if (decoded['success'] == true && decoded['shelves'] != null) {
+            final List<dynamic> shelves = decoded['shelves'];
+            for (final shelf in shelves) {
+              final List<dynamic> items = shelf['items'] ?? [];
+              for (final item in items) {
+                if (item['type'] == 'song') {
+                  songs.add(SongModel(
+                    id: item['id'] ?? '',
+                    title: item['title'] ?? '',
+                    artist: _cleanArtistName(item['artist'] ?? item['subtitle']),
+                    album: 'Single',
+                    artworkUrl: item['thumbnail'] ?? item['artworkUrl'] ?? '',
+                    sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${item['id']}',
+                    duration: const Duration(minutes: 3),
+                  ));
+                }
+              }
+            }
+          } else if (decoded['success'] == true && decoded['results'] != null) {
+            final List<dynamic> results = decoded['results'];
+            for (final r in results) {
+              songs.add(SongModel(
+                id: r['id'] ?? '',
+                title: r['title'] ?? '',
+                artist: _cleanArtistName(r['artist'] ?? r['subtitle']),
+                album: 'Single',
+                artworkUrl: r['thumbnail'] ?? r['artworkUrl'] ?? '',
+                sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${r['id']}',
+                duration: const Duration(minutes: 3),
+              ));
+            }
           }
         }
         return songs;
@@ -90,7 +107,7 @@ class MusicRemoteDataSourceImpl implements MusicRemoteDataSource {
                 description: shelf['strapline'] ?? '',
                 artworkUrl: items.isNotEmpty ? (items[0]['thumbnail'] ?? '') : '',
                 songs: const [],
-                creator: 'YouTube Music',
+                creator: '',
               ));
             }
           }
@@ -102,6 +119,29 @@ class MusicRemoteDataSourceImpl implements MusicRemoteDataSource {
     } catch (e) {
       throw ServerException(e.toString());
     }
+  }
+
+  String _cleanArtistName(String? subtitle) {
+    if (subtitle == null || subtitle.isEmpty) return 'Unknown Artist';
+    final clean = subtitle
+        .replaceAll('&amp;quot;', '"')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;#039;', "'")
+        .replaceAll('&#039;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;amp;', '&')
+        .replaceAll('&amp;', '&');
+    
+    final parts = clean.split(RegExp(r'\s*[•·]\s*'));
+    if (parts.length > 1) {
+      final first = parts[0].trim().toLowerCase();
+      if (first == 'song' || first == 'video' || first == 'playlist' || first == 'album') {
+        return parts[1].trim();
+      }
+      return parts[0].trim();
+    }
+    return clean.trim();
   }
 
   @override
@@ -120,7 +160,7 @@ class MusicRemoteDataSourceImpl implements MusicRemoteDataSource {
               songs.add(SongModel(
                 id: r['id'] ?? r['videoId'] ?? '',
                 title: r['title'] ?? '',
-                artist: r['subtitle'] ?? 'Unknown Artist',
+                artist: _cleanArtistName(r['subtitle']),
                 album: 'Album',
                 artworkUrl: r['thumbnail'] ?? '',
                 sourceUrl: '${AppUrls.baseApiUrl}${AppUrls.streamUrl}?id=${r['id'] ?? r['videoId']}',

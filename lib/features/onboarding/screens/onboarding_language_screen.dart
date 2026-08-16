@@ -168,94 +168,100 @@ class _OnboardingLanguageScreenState extends ConsumerState<OnboardingLanguageScr
             ),
             const SizedBox(height: AppSpacing.sm),
             Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 1.6,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: _languages.length,
-                itemBuilder: (context, index) {
-                  final lang = _languages[index];
-                  final isSelected = _selectedLanguages.contains(lang['id']);
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+                  final crossAxisCount = width > 900 ? 5 : (width > 600 ? 3 : 2);
+                  final childAspectRatio = width > 600 ? 2.0 : 1.6;
 
-                  return InkWell(
-                    onTap: () => _toggleLanguage(lang['id']!),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? context.colorScheme.primary.withOpacity(0.20)
-                            : context.colorScheme.surfaceContainerHigh.withOpacity(0.60),
+                  return GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      childAspectRatio: childAspectRatio,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: _languages.length,
+                    itemBuilder: (context, index) {
+                      final lang = _languages[index];
+                      final isSelected = _selectedLanguages.contains(lang['id']);
+
+                      return InkWell(
+                        onTap: () => _toggleLanguage(lang['id']!),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected
-                              ? context.colorScheme.primary
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Stack(
-                          children: [
-                            Positioned(
-                              right: -10,
-                              bottom: -10,
-                              width: 85,
-                              height: 85,
-                              child: Opacity(
-                                opacity: isSelected ? 0.9 : 0.45,
-                                child: Image.network(
-                                  lang['artistUrl']!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                                ),
-                              ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? context.colorScheme.primary.withOpacity(0.20)
+                                : context.colorScheme.surfaceContainerHigh.withOpacity(0.60),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? context.colorScheme.primary
+                                  : Colors.transparent,
+                              width: 2,
                             ),
-                            Padding(
-                              padding: const EdgeInsets.all(AppSpacing.md),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          lang['native']!,
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: isSelected ? Colors.white : context.colorScheme.onSurface,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isSelected)
-                                        Icon(
-                                          Icons.check_circle_rounded,
-                                          color: context.colorScheme.primary,
-                                          size: 18,
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    lang['name']!,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: context.colorScheme.onSurface.withOpacity(0.60),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  right: -10,
+                                  bottom: -10,
+                                  width: 85,
+                                  height: 85,
+                                  child: Opacity(
+                                    opacity: isSelected ? 0.9 : 0.45,
+                                    child: Image.network(
+                                      lang['artistUrl']!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(AppSpacing.md),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            lang['native']!,
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: context.colorScheme.onSurface,
+                                            ),
+                                          ),
+                                          if (isSelected)
+                                            Icon(
+                                              Icons.check_circle_rounded,
+                                              color: context.colorScheme.primary,
+                                              size: 20,
+                                            ),
+                                        ],
+                                      ),
+                                      Text(
+                                        lang['name']!,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: context.colorScheme.onSurface.withOpacity(0.60),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               ),

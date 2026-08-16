@@ -50,9 +50,24 @@ class JustAudioEngine implements AudioEngine {
   @override
   Future<Result<void, AudioPlaybackFailure>> setSource(String sourceUrl) async {
     try {
-      if (sourceUrl.startsWith('http')) {
-        await _player.setUrl(sourceUrl);
+      if (sourceUrl.isEmpty) {
+        await _player.setAudioSource(ConcatenatingAudioSource(children: []));
+      } else if (sourceUrl.startsWith('http')) {
+        await _player.setUrl(
+          sourceUrl,
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
+          },
+        );
+      } else if (sourceUrl.startsWith('file://')) {
+        // Local downloaded file — use URI-based source
+        await _player.setAudioSource(
+          AudioSource.uri(Uri.parse(sourceUrl)),
+        );
       } else {
+        // Raw file system path
         await _player.setFilePath(sourceUrl);
       }
       return const Result.success(null);

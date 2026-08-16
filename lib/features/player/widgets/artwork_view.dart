@@ -21,7 +21,14 @@ class PlayerArtworkView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = ref.watch(artworkPaletteProvider);
-    final size = MediaQuery.of(context).size.width * 0.75;
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isLandscape = screenWidth > screenHeight;
+    
+    final size = isLandscape 
+        ? (screenHeight * 0.45).clamp(180.0, 340.0)
+        : screenWidth * 0.75;
 
     return GestureDetector(
       onHorizontalDragEnd: (details) {

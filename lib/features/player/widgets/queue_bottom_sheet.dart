@@ -16,8 +16,25 @@ class QueueBottomSheet extends ConsumerWidget {
     final queue = ref.watch(queueProvider);
     final currentSong = ref.watch(currentSongProvider);
 
+    final isOnline = currentSong != null && !currentSong.isLocal;
+
     return RaagaBottomSheet(
       title: 'Play Queue (${queue.length} songs)',
+      trailing: isOnline
+          ? IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
+              tooltip: 'Refresh recommendations',
+              onPressed: () async {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Refreshing recommendations...'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                await ref.read(playbackSessionProvider.notifier).refreshCurrentAutoplayQueue();
+              },
+            )
+          : null,
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.6,
         child: queue.isEmpty

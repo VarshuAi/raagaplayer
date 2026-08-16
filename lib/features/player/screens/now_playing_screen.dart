@@ -13,6 +13,7 @@ import '../widgets/player_bottom_actions.dart';
 import '../widgets/lyrics_panel.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
+import '../../artist/screens/artist_page.dart';
 import '../../../core/audio/audio_queue.dart';
 import '../../../core/audio/queue_manager.dart';
 import '../../../music/presentation/providers/music_providers.dart';
@@ -300,14 +301,28 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
-          Text(
-            _cleanText(song.artist),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.textTheme.bodyLarge?.copyWith(
-              color: context.colorScheme.onSurface.withOpacity(0.70),
+          // Tappable artist name → opens ArtistPage
+          GestureDetector(
+            onTap: () {
+              final artistName = _cleanText(song.artist as String);
+              if (artistName.isEmpty) return;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ArtistPage(artistName: artistName),
+                ),
+              );
+            },
+            child: Text(
+              _cleanText(song.artist),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textTheme.bodyLarge?.copyWith(
+                color: context.colorScheme.primary.withOpacity(0.85),
+                decoration: TextDecoration.underline,
+                decorationColor: context.colorScheme.primary.withOpacity(0.4),
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),

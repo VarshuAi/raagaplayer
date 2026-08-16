@@ -1,13 +1,19 @@
+import 'dart:io';
+import 'dart:math' show min;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../../../core/audio/audio_state.dart';
 import '../../../../core/services/playback_restore.dart';
 import '../../../../core/audio/queue_manager.dart';
 import '../../../features/player/provider/player_provider.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, Variable;
 import 'package:just_audio/just_audio.dart' show LoopMode;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../../../core/constants/urls.dart';
+import '../../data/datasource/remote/ytmusic_client.dart';
 import '../../application/music_backend.dart';
 import '../../application/home_feed_coordinator.dart';
 import '../../application/cloud_sync_coordinator.dart';
@@ -41,6 +47,16 @@ import '../../../../core/network/network_monitor.dart';
 import '../../../../core/playback/media_pipeline.dart';
 import '../../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../../../core/database/app_database.dart' as db_models;
+
+void logToFile(String msg) {
+  print(msg);
+  try {
+    getApplicationDocumentsDirectory().then((dir) {
+      final file = File(p.join(dir.path, 'raaga_debug.log'));
+      file.writeAsStringSync('${DateTime.now().toIso8601String()}: $msg\n', mode: FileMode.append);
+    }).catchError((_) {});
+  } catch (_) {}
+}
 
 final httpClientProvider = Provider<http.Client>((ref) {
   final client = http.Client();
@@ -173,6 +189,7 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
   final Ref _ref;
   late final PlaybackRestoreService _restoreService;
   int? _lastSessionId;
+  bool _isTransitioning = false; // Suppresses engine stream updates during track changes
 
   PlaybackSessionNotifier(this._ref) : super(const PlaybackSession()) {
     final db = _ref.read(databaseProvider);
@@ -181,6 +198,7 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
     final engine = _ref.read(corePlaybackEngineProvider);
     
     engine.positionStream.listen((pos) {
+      if (_isTransitioning) return;
       state = state.copyWith(position: pos);
       if (pos.inSeconds > 0 && pos.inSeconds % 5 == 0) {
         _saveState();
@@ -189,11 +207,15 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
 
     engine.durationStream.listen((dur) {
       state = state.copyWith(duration: dur);
+      print('[PlaybackNotifier] Duration update: ${dur.inSeconds}s');
     });
 
     engine.playbackStateStream.listen((playbackState) {
+      print('[PlaybackNotifier] Engine state event: $playbackState (isTransitioning=$_isTransitioning)');
+      if (_isTransitioning) return; // ignore idle/loading noise during track change
       final oldState = state.state;
       state = state.copyWith(state: playbackState);
+      print('[PlaybackNotifier] UI State updated to: $playbackState');
 
       if (playbackState == RaagaPlaybackState.completed) {
         _logSessionCompletion(true);
@@ -249,56 +271,163 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
       }
     }
 
-    state = state.copyWith(currentSong: song);
+    // Set state to loading IMMEDIATELY and stop old song playback
+    _isTransitioning = true; // Block engine stream events during transition
+    state = state.copyWith(
+      currentSong: song,
+      state: RaagaPlaybackState.loading,
+      position: Duration.zero,
+      duration: song.duration,
+    );
     _ref.read(currentSongProvider.notifier).state = song;
 
-    // ── Stream URL resolution ──────────────────────────────────────────────
-    // If the stored sourceUrl is a JioSaavn webpage link (not a real audio
-    // URL), ask the backend to resolve the actual .mp3 stream URL first.
-    String resolvedUrl = song.sourceUrl;
-    if (!song.isLocal && (!_isDirectAudioUrl(song.sourceUrl) || song.sourceUrl.isEmpty) && song.id.isNotEmpty) {
-      try {
-        final client = _ref.read(httpClientProvider);
-        final uri = Uri.parse('${AppUrls.baseApiUrl}/api/song/${song.id}/stream-url');
-        final response = await client.get(uri);
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final resolved = data['streamUrl'] as String? ?? '';
-          if (resolved.isNotEmpty) resolvedUrl = resolved;
-        }
-      } catch (_) {}
-    }
+    final engine = _ref.read(corePlaybackEngineProvider);
+    try {
+      await engine.stop(); // Stop the previous song audio immediately!
+    } catch (_) {}
 
-    if (!song.isLocal && resolvedUrl.isEmpty && (song.title.isNotEmpty || song.artist.isNotEmpty)) {
-      try {
-        final client = _ref.read(httpClientProvider);
-        final query = '${song.title} ${song.artist}'.trim();
-        final uri = Uri.parse('${AppUrls.baseApiUrl}/api/search?q=${Uri.encodeComponent(query)}&limit=5');
-        final response = await client.get(uri);
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final List<dynamic> list = data['results'] ?? data['songs'] ?? (data is List ? data : []);
-          if (list.isNotEmpty) {
-            final first = list.first;
-            String streamUrl = (first['streamingUrl'] ?? first['sourceUrl'] ?? first['streamUrl'] ?? first['media_url'] ?? '').toString();
-            final songId = (first['id'] ?? first['songid'] ?? '').toString();
-            if (streamUrl.isEmpty && songId.isNotEmpty) {
-              streamUrl = '/api/song/$songId/stream-url';
+    // ── Resolve playback URL ──────────────────────────────────────────────
+    String resolvedUrl = '';
+
+    if (song.isLocal) {
+      // ── Offline / downloaded song — play from local file ──────────────
+      String localPath = song.sourceUrl;
+
+      // Fallback: look it up in the downloads DB in case sourceUrl is stale
+      if (localPath.isEmpty || localPath.startsWith('/api/')) {
+        try {
+          final db = _ref.read(databaseProvider);
+          final rows = await db.customSelect(
+            'SELECT path FROM downloads WHERE song_id = ? AND status = 2 LIMIT 1',
+            variables: [Variable.withString(song.id)],
+          ).get();
+          if (rows.isNotEmpty) {
+            localPath = rows.first.read<String>('path');
+          }
+        } catch (e) {
+          print('[playSong] Failed to look up download path: $e');
+        }
+      }
+
+      // Strip file:// prefix if present to verify path existence
+      if (localPath.startsWith('file://')) {
+        localPath = localPath.substring(7);
+      }
+
+      // Check if file exists; if not, resolve it dynamically in current downloads directories
+      File audioFile = File(localPath);
+      if (localPath.isEmpty || !audioFile.existsSync()) {
+        print('[playSong] Local file not found at: "$localPath". Resolving path dynamically...');
+        try {
+          final filename = '${song.id}.mp3';
+          // Try external storage directory
+          final extDir = await getExternalStorageDirectory();
+          if (extDir != null) {
+            final testFile = File(p.join(extDir.path, 'Raaga', 'downloads', filename));
+            if (testFile.existsSync()) {
+              localPath = testFile.path;
             }
-            if (streamUrl.isNotEmpty) resolvedUrl = streamUrl;
+          }
+          // Try app docs directory fallback
+          if (localPath.isEmpty || !File(localPath).existsSync()) {
+            final docDir = await getApplicationDocumentsDirectory();
+            final testFile = File(p.join(docDir.path, 'downloads', filename));
+            if (testFile.existsSync()) {
+              localPath = testFile.path;
+            }
+          }
+        } catch (e) {
+          print('[playSong] Error checking path dynamically: $e');
+        }
+      }
+
+      if (localPath.isEmpty || !File(localPath).existsSync()) {
+        print('[playSong] Failed to find downloaded file for ${song.id} anywhere');
+        _isTransitioning = false;
+        state = state.copyWith(state: RaagaPlaybackState.error);
+        return;
+      }
+
+      // Use raw file path directly for just_audio setFilePath to avoid URI parsing bugs
+      resolvedUrl = localPath;
+      print('[playSong] Playing local file path: $resolvedUrl');
+
+    } else if (song.id.isNotEmpty && song.id.length == 11) {
+      // ── Online song — resolve YouTube stream URL ───────────────────────
+      try {
+        logToFile('[playSong] Starting stream resolution for song: ${song.id}...');
+
+        StreamManifest? manifest;
+        // Try Android client first
+        try {
+          manifest = await ytExplode.videos.streams.getManifest(
+            song.id,
+            ytClients: [YoutubeApiClient.android],
+          ).timeout(const Duration(seconds: 15));
+        } catch (e) {
+          logToFile('[playSong] Android stream resolution failed: $e. Trying Android VR...');
+        }
+
+        // Try Android VR client next
+        if (manifest == null) {
+          try {
+            manifest = await ytExplode.videos.streams.getManifest(
+              song.id,
+              ytClients: [YoutubeApiClient.androidVr],
+            ).timeout(const Duration(seconds: 15));
+          } catch (e) {
+            logToFile('[playSong] Android VR stream resolution failed: $e. Trying standard client fallback...');
           }
         }
+
+        // Try standard default client fallback
+        if (manifest == null) {
+          try {
+            manifest = await ytExplode.videos.streams.getManifest(
+              song.id,
+            ).timeout(const Duration(seconds: 20));
+          } catch (e) {
+            logToFile('[playSong] Standard client fallback failed: $e');
+          }
+        }
+
+        if (manifest != null) {
+          final mp4Streams = manifest.audioOnly.where((s) => s.container == StreamContainer.mp4);
+          resolvedUrl = mp4Streams.isNotEmpty
+              ? mp4Streams.withHighestBitrate().url.toString()
+              : manifest.audioOnly.withHighestBitrate().url.toString();
+          logToFile('[playSong] Resolved stream URL: ${resolvedUrl.substring(0, min(60, resolvedUrl.length))}...');
+        } else {
+          logToFile('[playSong] Direct resolution failed for song ${song.id} — all clients failed.');
+        }
+      } catch (e) {
+        logToFile('[playSong] Direct resolution exception for song ${song.id}: $e');
+      }
+    }
+
+    if (resolvedUrl.isEmpty) {
+      logToFile('[playSong] Stream resolution failed and no fallback available.');
+      _isTransitioning = false;
+      state = state.copyWith(state: RaagaPlaybackState.error);
+      try {
+        await engine.setSource(''); // Clear source so play button does not play the old track
       } catch (_) {}
+      return;
     }
 
-    // Ensure relative API URLs (/api/stream...) are prepended with AppUrls.baseApiUrl
-    if (!song.isLocal && resolvedUrl.startsWith('/')) {
-      resolvedUrl = '${AppUrls.baseApiUrl}$resolvedUrl';
+    try {
+      logToFile('[playSong] Setting engine source to: ${resolvedUrl.substring(0, min(60, resolvedUrl.length))}...');
+      await engine.setSource(resolvedUrl);
+      _isTransitioning = false; // Allow engine events through once source is set
+      logToFile('[playSong] Calling engine.play()...');
+      await engine.play();
+      logToFile('[playSong] Playback started successfully!');
+    } catch (e) {
+      logToFile('[playSong] Playback failed for $resolvedUrl: $e');
+      _isTransitioning = false;
+      state = state.copyWith(state: RaagaPlaybackState.error);
+      return;
     }
-
-    final engine = _ref.read(corePlaybackEngineProvider);
-    await engine.setSource(resolvedUrl);
-    await engine.play();
 
     try {
       engine.audioHandler.updateMetadata(
@@ -618,20 +747,18 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
 
   Future<void> _fetchAndAppendAutoplayRecommendations(Song song) async {
     try {
-      final client = _ref.read(httpClientProvider);
-      final uri = Uri.parse('${AppUrls.baseApiUrl}/api/recommendations/songs/${song.id}');
-      final response = await client.get(uri);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        final radioSongs = data
+      print('[PlaybackNotifier] Fetching on-device Watch Next recommendations for seed: ${song.id}');
+      final onlineRecs = await fetchRecommendations(song.id);
+      if (onlineRecs.isNotEmpty) {
+        final radioSongs = onlineRecs
             .map((r) => Song(
                   id: r['id'] ?? '',
                   title: r['title'] ?? '',
                   artist: r['artist'] ?? '',
-                  album: r['album'] ?? '',
-                  artworkUrl: r['image'] ?? r['artworkUrl'] ?? '',
-                  sourceUrl: r['streamingUrl'] ?? r['sourceUrl'] ?? '',
-                  duration: Duration(seconds: r['duration'] ?? 0),
+                  album: '',
+                  artworkUrl: r['artworkUrl'] ?? '',
+                  sourceUrl: '/api/stream?id=${r['id']}',
+                  duration: Duration(seconds: r['durationSeconds'] ?? 0),
                   isLocal: false,
                   isFavorite: false,
                 ))
@@ -640,10 +767,34 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
 
         if (radioSongs.isNotEmpty) {
           QueueManager().addAll(radioSongs);
+          print('[PlaybackNotifier] Added ${radioSongs.length} Watch Next recommendations to queue.');
         }
       }
     } catch (e) {
-      print('Failed to fetch online autoplay recommendations: $e');
+      print('[PlaybackNotifier] Failed to fetch on-device Watch Next recommendations: $e');
+    }
+  }
+
+  Future<void> refreshCurrentAutoplayQueue() async {
+    final current = state.currentSong;
+    if (current == null || current.isLocal) return;
+
+    final items = QueueManager().currentQueue.items;
+    final currentIndex = QueueManager().currentQueue.currentIndex;
+
+    if (currentIndex >= 0 && currentIndex < items.length) {
+      final currentPlaying = items[currentIndex];
+      
+      // Clear queue, keeping only the currently playing song
+      QueueManager().setQueue([currentPlaying], initialIndex: 0);
+
+      // Force state update so listeners rebuild
+      state = state.copyWith(
+        position: state.position, // preserve position
+      );
+
+      // Fetch and append a fresh set of recommendations
+      await _fetchAndAppendAutoplayRecommendations(currentPlaying);
     }
   }
 }
@@ -685,68 +836,378 @@ final homeFeedEngineProvider = Provider<HomeFeedEngine>((ref) {
 });
 
 final homeFeedProvider = FutureProvider.family<List<HomeFeedShelf>, String>((ref, language) async {
+  final httpClient = ref.read(httpClientProvider);
+  final db = ref.read(databaseProvider);
+
+  // ── 0. Fetch "Picked For You" shelf from 3 diverse seed sources ──────────
+  HomeFeedShelf? recommendationShelf;
   try {
-    final client = ref.watch(httpClientProvider);
-    final uri = Uri.parse('${AppUrls.baseApiUrl}/api/home?language=$language');
-    final response = await client.get(uri);
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      final shelves = <HomeFeedShelf>[];
+    // Seed 1: Most recently played
+    final recentRows = await db.customSelect(
+      'SELECT song_id FROM recently_played ORDER BY played_at DESC LIMIT 1'
+    ).get();
 
-      for (final shelfJson in data) {
-        final title = shelfJson['title'] ?? 'Trending Hits';
-        final subtitle = shelfJson['subtitle'] ?? '';
-        final String shelfType = shelfJson['shelfType'] ?? 'mixed';
-        final List<dynamic> rawItems = shelfJson['items'] ?? [];
+    // Seed 2: Most-played song this week (from history table)
+    final mostPlayedRows = await db.customSelect(
+      'SELECT song_id, COUNT(*) as cnt FROM history '
+      'WHERE played_at > datetime(\'now\', \'-7 days\') '
+      'GROUP BY song_id ORDER BY cnt DESC LIMIT 1'
+    ).get();
 
-        final items = rawItems.map((item) {
-          // For song shelves (from getTrendingSongsForLanguage), use streamUrl.
-          // For album/playlist shelves, fall back to permaUrl.
-          final streamUrl = item['streamUrl'] as String? ?? '';
-          final permaUrl = item['permaUrl'] as String? ?? '';
-          final sourceUrl = streamUrl.isNotEmpty ? streamUrl : permaUrl;
+    // Seed 3: A random favorite song
+    final favoriteRows = await db.customSelect(
+      'SELECT id FROM songs WHERE is_favorite = 1 ORDER BY RANDOM() LIMIT 1'
+    ).get();
 
-          final rawDuration = item['duration'];
-          final durationSecs = rawDuration is int
-              ? rawDuration
-              : (rawDuration is String ? int.tryParse(rawDuration) ?? 180 : 180);
+    final seedIds = <String>{};
 
-          return Song(
-            id: item['id'] ?? '',
-            title: item['title'] ?? 'Unknown Title',
-            artist: item['artist'] ?? item['subtitle'] ?? 'Raaga Stream',
-            album: item['album'] ?? title,
-            artworkUrl: item['artworkUrl'] ?? '',
-            sourceUrl: sourceUrl,
-            duration: Duration(seconds: durationSecs),
+    if (recentRows.isNotEmpty) {
+      final id = recentRows.first.read<String>('song_id');
+      if (id.length == 11) seedIds.add(id);
+    }
+    if (mostPlayedRows.isNotEmpty) {
+      final id = mostPlayedRows.first.read<String>('song_id');
+      if (id.length == 11) seedIds.add(id);
+    }
+    if (favoriteRows.isNotEmpty) {
+      final id = favoriteRows.first.read<String>('id');
+      if (id.length == 11) seedIds.add(id);
+    }
+
+    if (seedIds.isNotEmpty) {
+      // Fetch recommendations for all seeds in parallel
+      final futures = seedIds.map((id) =>
+          fetchRecommendations(id).catchError((_) => <Map<String, dynamic>>[]));
+      final allRecs = await Future.wait(futures);
+
+      // Interleave & deduplicate across all seeds
+      final seen = <String>{...seedIds};
+      final merged = <Map<String, dynamic>>[];
+      final lists = allRecs.toList();
+      int maxLen = lists.fold(0, (m, r) => r.length > m ? r.length : m);
+      for (int i = 0; i < maxLen; i++) {
+        for (final recs in lists) {
+          if (i < recs.length) {
+            final id = recs[i]['id'] as String? ?? '';
+            if (id.isNotEmpty && seen.add(id)) merged.add(recs[i]);
+          }
+        }
+      }
+
+      if (merged.isNotEmpty) {
+        final recSongs = merged.take(24).map((r) => Song(
+          id: r['id'] as String,
+          title: r['title'] as String,
+          artist: r['artist'] as String,
+          album: '',
+          artworkUrl: r['artworkUrl'] as String,
+          sourceUrl: '/api/stream?id=${r['id']}',
+          duration: Duration(seconds: r['durationSeconds'] as int),
+          isLocal: false,
+          isFavorite: false,
+        )).toList();
+
+        recommendationShelf = HomeFeedShelf(
+          title: 'Picked For You',
+          subtitle: 'From your recent plays, replays & favorites',
+          shelfType: 'songs',
+          items: recSongs,
+        );
+        print('[homeFeed] Picked For You: ${recSongs.length} songs from ${seedIds.length} seeds');
+      }
+    }
+  } catch (e) {
+    print('[homeFeed] Failed to load Picked For You: $e');
+  }
+
+  String cleanArtist(String author) {
+    return author
+        .replaceAll(RegExp(r'\s*-\s*Topic$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*VEVO$', caseSensitive: false), '')
+        .trim();
+  }
+
+  // Helper: convert a list of raw song maps to Song entities
+  List<Song> _rawToSongs(List<Map<String, dynamic>> raw) => raw
+      .map((m) => Song(
+            id: m['id'] as String,
+            title: m['title'] as String,
+            artist: m['artist'] as String,
+            album: '',
+            artworkUrl: m['artworkUrl'] as String,
+            sourceUrl: '/api/stream?id=${m['id']}',
+            duration: Duration(seconds: m['durationSeconds'] as int),
             isLocal: false,
             isFavorite: false,
-          );
-        }).where((s) => s.id.isNotEmpty).toList();
+          ))
+      .toList();
 
-        if (items.isNotEmpty) {
+  // ── Parse selected languages from the joined key ─────────────────────────
+  final langs = language
+      .split(',')
+      .map((l) => l.trim().toLowerCase())
+      .where((l) => l.isNotEmpty && l != 'null' && l != 'none')
+      .toList();
+
+  final hasLanguageFilter = langs.isNotEmpty;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PATH A: Language-specific — one shelf per language (Songs + New + Hits)
+  // This path is taken whenever the user has selected any language chip.
+  // ─────────────────────────────────────────────────────────────────────────
+  if (hasLanguageFilter) {
+    try {
+      // For each selected language, run 2 queries in parallel: Top hits + New releases
+      final allShelfFutures = <Future<List<HomeFeedShelf>>>[];
+
+      for (final lang in langs) {
+        final capLang = lang[0].toUpperCase() + lang.substring(1);
+        allShelfFutures.add(() async {
+          final queries = [
+            {'title': 'Trending $capLang', 'query': '$lang top hits 2024'},
+            {'title': 'New $capLang Releases', 'query': 'new $lang songs 2024'},
+            {'title': '$capLang Hits', 'query': '$lang superhits best songs'},
+          ];
+          final results = await Future.wait(queries.map((q) => ytMusicPost(
+            'search',
+            {'query': q['query']!, 'params': 'EgWKAQIIAWoKEAMQBBAJEAoQBQ=='},
+            client: httpClient,
+          )));
+
+          final shelves = <HomeFeedShelf>[];
+          for (int i = 0; i < queries.length; i++) {
+            final songs = _rawToSongs(extractSongs(results[i]));
+            if (songs.isNotEmpty) {
+              final displaySongs = List<Song>.from(songs)..shuffle();
+              shelves.add(HomeFeedShelf(
+                title: queries[i]['title']!,
+                subtitle: 'Popular right now',
+                shelfType: 'songs',
+                items: displaySongs.take(12).toList(),
+              ));
+            }
+          }
+          return shelves;
+        }());
+      }
+
+      final allLangResults = await Future.wait(allShelfFutures);
+      final langShelves = allLangResults.expand((s) => s).toList();
+
+      // Also fetch albums for selected languages
+      final albumShelfFutures = langs.map((lang) async {
+        final capLang = lang[0].toUpperCase() + lang.substring(1);
+        final data = await ytMusicPost('search', {
+          'query': '$lang albums 2024',
+          // Album filter params
+          'params': 'EgWKAQIYAWoKEAMQBBAJEAoQBQ==',
+        }, client: httpClient);
+        final songs = _rawToSongs(extractSongs(data));
+        if (songs.isEmpty) return null;
+        final displaySongs = List<Song>.from(songs)..shuffle();
+        return HomeFeedShelf(
+          title: '$capLang Albums',
+          subtitle: 'Latest albums',
+          shelfType: 'albums',
+          items: displaySongs.take(12).toList(),
+        );
+      });
+      final albumResults = await Future.wait(albumShelfFutures);
+      final albumShelves = albumResults.whereType<HomeFeedShelf>().toList();
+
+      if (langShelves.isNotEmpty || albumShelves.isNotEmpty) {
+        final combined = <HomeFeedShelf>[];
+        if (recommendationShelf != null) combined.add(recommendationShelf!);
+        combined.addAll(langShelves);
+        combined.addAll(albumShelves);
+        return combined;
+      }
+    } catch (e) {
+      print('[homeFeed] Language-specific search failed: $e');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PATH B: No language selected — use global YTMusic home browse
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── 1. Try YouTube Music browse (FEmusic_home) ───────────────────────────
+  try {
+    final uri = Uri.parse('$ytMusicBase/browse?key=$ytMusicApiKey');
+    final payload = json.encode({
+      "context": ytMusicContext,
+      "browseId": "FEmusic_home",
+    });
+
+    final response = await httpClient.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-YouTube-Client-Name': '67',
+        'X-YouTube-Client-Version': '1.20240918.01.00',
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com/',
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0.0.0 Safari/537.36',
+      },
+      body: payload,
+    ).timeout(const Duration(seconds: 12));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+
+      // Walk the sections from the home browse response
+      final shelves = <HomeFeedShelf>[];
+      final sections = ytNav(data, [
+        'contents', 'singleColumnBrowseResultsRenderer', 'tabs', 0,
+        'tabRenderer', 'content', 'sectionListRenderer', 'contents'
+      ]) as List? ?? [];
+
+      for (final section in sections) {
+        final shelf = section['musicCarouselShelfRenderer'] ??
+            section['musicShelfRenderer'] ??
+            section['musicImmersiveCarouselShelfRenderer'];
+        if (shelf == null) continue;
+
+        // Shelf title
+        final titleRuns = ytNav(shelf, ['header',
+          'musicCarouselShelfBasicHeaderRenderer', 'title', 'runs']) as List? ??
+            ytNav(shelf, ['header',
+              'musicImmersiveCarouselShelfBasicHeaderRenderer', 'title', 'runs']) as List? ?? [];
+        final shelfTitle = titleRuns.isNotEmpty
+            ? (titleRuns[0]['text'] as String? ?? 'Picks for You')
+            : 'Picks for You';
+
+        // Parse items from contents
+        final contents = (shelf['contents'] as List? ?? []);
+        final songs = <Song>[];
+        for (final item in contents) {
+          final m = parseMusicItem(item);
+          if (m != null) {
+            songs.add(Song(
+              id: m['id'] as String,
+              title: m['title'] as String,
+              artist: m['artist'] as String,
+              album: '',
+              artworkUrl: m['artworkUrl'] as String,
+              sourceUrl: '/api/stream?id=${m['id']}',
+              duration: Duration(seconds: m['durationSeconds'] as int),
+              isLocal: false,
+              isFavorite: false,
+            ));
+          }
+        }
+
+        if (songs.isNotEmpty) {
+          // Skip podcast/episode shelves — they never resolve to playable songs
+          final lowerTitle = shelfTitle.toLowerCase();
+          final isEpisodeShelf = lowerTitle.contains('episode') ||
+              lowerTitle.contains('podcast') ||
+              lowerTitle.contains('talk show') ||
+              lowerTitle.contains('comedy') ||
+              lowerTitle.contains('upload') ||
+              lowerTitle.contains('show');
+          if (isEpisodeShelf) continue;
+
           shelves.add(HomeFeedShelf(
-            title: title,
-            subtitle: subtitle,
-            items: items,
-            shelfType: shelfType,
+            title: shelfTitle,
+            subtitle: 'Trending',
+            shelfType: 'songs',
+            items: songs.take(15).toList(),
           ));
         }
       }
-      if (shelves.isNotEmpty) return shelves;
+
+      if (shelves.isNotEmpty) {
+        if (recommendationShelf != null) {
+          shelves.insert(0, recommendationShelf!);
+        }
+        // Add global album shelf at the bottom
+        try {
+          final albumData = await ytMusicPost('search', {
+            'query': 'top albums 2024',
+            'params': 'EgWKAQIYAWoKEAMQBBAJEAoQBQ==',
+          }, client: httpClient);
+          final albumSongs = _rawToSongs(extractSongs(albumData));
+          if (albumSongs.isNotEmpty) {
+            shelves.add(HomeFeedShelf(
+              title: 'Popular Albums',
+              subtitle: 'Latest releases',
+              shelfType: 'albums',
+              items: albumSongs.take(12).toList(),
+            ));
+          }
+        } catch (_) {}
+        return shelves;
+      }
     }
   } catch (e) {
-    print('Home Feed Fetch Error ($language): $e');
+    print('[homeFeed] YTMusic browse failed: $e');
   }
 
+  // ── 2. Fallback: YTMusic generic search-based shelves ────────────────────
+  try {
+    final queries = <Map<String, String>>[
+      {
+        'title': 'Trending Hits',
+        'subtitle': 'Popular right now',
+        'query': 'top hits 2024',
+      },
+      {
+        'title': 'New Releases',
+        'subtitle': 'Fresh new releases',
+        'query': 'new songs 2024',
+      },
+      {
+        'title': 'Chill Vibes',
+        'subtitle': 'Easy listening',
+        'query': 'chill music playlist',
+      },
+    ];
+
+    // Fire all 3 searches simultaneously instead of sequentially
+    final results = await Future.wait(
+      queries.map((q) => ytMusicPost(
+        'search',
+        {'query': q['query']!, 'params': 'EgWKAQIIAWoKEAMQBBAJEAoQBQ=='},
+        client: httpClient,
+      )),
+    );
+
+    final shelves = <HomeFeedShelf>[];
+    for (int i = 0; i < queries.length; i++) {
+      final songs = _rawToSongs(extractSongs(results[i]));
+      if (songs.isNotEmpty) {
+        final displaySongs = List<Song>.from(songs)..shuffle();
+        shelves.add(HomeFeedShelf(
+          title: queries[i]['title']!,
+          subtitle: queries[i]['subtitle']!,
+          shelfType: 'songs',
+          items: displaySongs.take(12).toList(),
+        ));
+      }
+    }
+    if (shelves.isNotEmpty) {
+      if (recommendationShelf != null) {
+        shelves.insert(0, recommendationShelf!);
+      }
+      return shelves;
+    }
+  } catch (e) {
+    print('[homeFeed] YTMusic search fallback failed: $e');
+  }
+
+  // ── 3. Last resort: trending songs provider ───────────────────────────────
   final trending = await ref.watch(trendingSongsProvider.future);
-  return [
-    HomeFeedShelf(
-      title: "Trending Hits (${language.toUpperCase()})",
-      subtitle: "Top recommendations for $language",
-      items: trending,
-    )
-  ];
+  final list = <HomeFeedShelf>[];
+  if (recommendationShelf != null) {
+    list.add(recommendationShelf);
+  }
+  list.add(HomeFeedShelf(
+    title: 'Trending Hits',
+    subtitle: 'Top recommendations',
+    items: trending,
+  ));
+  return list;
 });
 
 final favoritesSongsProvider = FutureProvider<List<Song>>((ref) async {

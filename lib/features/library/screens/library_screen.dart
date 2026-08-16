@@ -4,6 +4,7 @@ import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
 import 'songs_tab.dart';
 import 'favorites_tab.dart';
+import 'downloads_tab.dart';
 import 'albums_tab.dart';
 import 'artists_tab.dart';
 import 'playlists_tab.dart';
@@ -22,6 +23,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
 
   final List<String> _tabs = [
     'Favorites',
+    'Downloads',
     'Songs',
     'Albums',
     'Artists',
@@ -89,6 +91,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         controller: _tabController,
         children: const [
           FavoritesTab(),
+          DownloadsTab(),
           SongsTab(),
           AlbumsTab(),
           ArtistsTab(),

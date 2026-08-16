@@ -16,6 +16,9 @@ import '../widgets/shelf_widget.dart';
 import 'entity_detail_screen.dart';
 import '../../player/provider/player_provider.dart';
 import '../../../music/presentation/providers/music_providers.dart';
+import '../../artist/screens/artists_browser_page.dart';
+import '../../offline/screens/no_network_screen.dart';
+import '../../../core/services/update_service.dart';
 
 final ScrollController homeScrollController = ScrollController();
 
@@ -48,6 +51,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
   void initState() {
     super.initState();
     _loadUserPreferences();
+    _checkConnectivity();
+  }
+
+  Future<void> _checkConnectivity() async {
+    try {
+      final isOnline = await hasInternetConnection();
+      if (!isOnline && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const NoNetworkScreen()),
+        );
+      } else {
+        // Run update check in the background
+        _checkForUpdates();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      // First, check if the user just updated the app and show "What's New"
+      await UpdateService.checkAndShowPostUpdateDialog(context);
+
+      // Next, check if a new update is available on GitHub
+      final updateInfo = await UpdateService.checkForUpdates();
+      if (updateInfo != null && mounted) {
+        UpdateService.showUpdateDialog(context, updateInfo);
+      }
+    } catch (e) {
+      print('[UpdateCheck] Failed to run OTA check: $e');
+    }
   }
 
   Future<void> _loadUserPreferences() async {
@@ -106,12 +139,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
 
   void _toggleLanguage(String langId) async {
     setState(() {
-      if (_selectedLanguages.contains(langId)) {
-        if (_selectedLanguages.length > 1) {
-          _selectedLanguages.remove(langId);
-        }
+      if (_selectedLanguages.contains(langId) && _selectedLanguages.length == 1) {
+        // Tapping the only selected chip → deselect (show global feed)
+        _selectedLanguages.clear();
       } else {
-        _selectedLanguages.add(langId);
+        // Select only this language (exclusive / radio-button behavior)
+        _selectedLanguages = {langId};
       }
     });
 
@@ -121,17 +154,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
       await langFile.writeAsString(json.encode(_selectedLanguages.toList()));
     } catch (_) {}
 
-    ref.invalidate(homeFeedProvider(_selectedLanguages.join(',')));
+    final key = _selectedLanguages.join(',');
+    ref.invalidate(homeFeedProvider(key));
   }
 
   Widget _buildHeroCarousel(List<Song> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     final featured = items.take(5).toList();
 
+    final width = MediaQuery.of(context).size.width;
+    final viewportFraction = width > 900 ? 0.52 : (width > 600 ? 0.70 : 0.90);
+
     return SizedBox(
       height: 200,
       child: PageView.builder(
-        controller: PageController(viewportFraction: 0.90),
+        controller: PageController(viewportFraction: viewportFraction),
         itemCount: featured.length,
         itemBuilder: (context, index) {
           final song = featured[index];
@@ -363,7 +400,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
 
             // Horizontal Multi-Language Selector Chips
             SizedBox(
-              height: 40,
+              height: 36,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -374,32 +411,101 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(lang['label']!),
-                      selected: isSelected,
-                      selectedColor: context.colorScheme.primary,
-                      backgroundColor: context.colorScheme.surfaceContainerHigh,
-                      checkmarkColor: Colors.white,
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : context.colorScheme.onSurface.withOpacity(0.7),
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 13,
+                    child: GestureDetector(
+                      onTap: () => _toggleLanguage(lang['id']!),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? context.colorScheme.primary
+                              : context.colorScheme.surfaceContainerHigh.withOpacity(0.60),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: isSelected
+                                ? context.colorScheme.primary
+                                : context.colorScheme.outline.withOpacity(0.12),
+                            width: 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            lang['label']!,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : context.colorScheme.onSurface.withOpacity(0.75),
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      onSelected: (_) => _toggleLanguage(lang['id']!),
                     ),
                   );
                 },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+
+            // ── Browse Artists button ──────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ArtistsBrowserPage(
+                          selectedLanguages: _selectedLanguages,
+                        ),
+                      ));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            context.colorScheme.primary.withOpacity(0.85),
+                            context.colorScheme.secondary.withOpacity(0.7),
+                          ],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: context.colorScheme.primary.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.people_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Browse Artists',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: AppSpacing.md),
 
             homeFeedAsync.when(
               loading: () => const SizedBox(
-                height: 220,
-                child: Center(child: RaagaCircularIndicator()),
+                height: 260,
+                child: Center(child: _MusicLoadingAnimation()),
               ),
               error: (err, stack) => Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
@@ -411,46 +517,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
               data: (shelves) {
                 if (shelves.isEmpty) return const SizedBox.shrink();
 
-                // Group Shelves: Section 1 (Trending Songs 1st), Section 2 (Albums 2nd), Section 3 (Playlists & Charts 3rd)
-                final songShelves = shelves.where((s) => s.title.contains('Trending') || s.title.contains('Hits')).toList();
+                // Group Shelves: Recommended, Trending, Albums, Others
+                final recShelves = shelves.where((s) => s.title.contains('Recommended')).toList();
+                final songShelves = shelves.where((s) => (s.title.contains('Trending') || s.title.contains('Hits')) && !recShelves.contains(s)).toList();
                 final albumShelves = shelves.where((s) => s.title.contains('Releases') || s.title.contains('Albums')).toList();
-                final otherShelves = shelves.where((s) => !songShelves.contains(s) && !albumShelves.contains(s)).toList();
+                final otherShelves = shelves.where((s) => !songShelves.contains(s) && !albumShelves.contains(s) && !recShelves.contains(s)).toList();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // SPOTLIGHT HERO CAROUSEL (Spotify/YT Music Style)
+                    // SPOTLIGHT HERO CAROUSEL
                     if (songShelves.isNotEmpty && songShelves.first.items.isNotEmpty) ...[
                       _buildHeroCarousel(songShelves.first.items),
-                      const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.sm),
                     ],
 
-                    // 1. TOP SECTION: Trending Songs List (Matching Reference Image)
-                    if (songShelves.isNotEmpty) ...[
+                    // 0. RECOMMENDED FOR YOU
+                    if (recShelves.isNotEmpty) ...[
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
-                        child: Text(
-                          'Trending Music',
-                          style: context.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: context.colorScheme.onSurface,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              recShelves.first.title,
+                              style: context.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: context.colorScheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              recShelves.first.subtitle,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: context.colorScheme.onSurface.withOpacity(0.50),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      ...songShelves.map((shelf) => _buildSongsSection(context, shelf.items)).toList(),
-                      const SizedBox(height: AppSpacing.md),
+                      _buildCompactGrid(context, recShelves.first.items),
+                      const SizedBox(height: AppSpacing.sm),
                     ],
 
-                    // 2. SECOND SECTION: Albums & EP Releases (Square Cards)
-                    if (albumShelves.isNotEmpty) ...[
-                      ...albumShelves.map((shelf) => _buildDynamicShelf('Popular Albums & EPs', shelf.subtitle, shelf.items)).toList(),
-                      const SizedBox(height: AppSpacing.md),
-                    ],
-
-                    // 3. THIRD SECTION: Playlists & Charts
-                    if (otherShelves.isNotEmpty) ...[
-                      ...otherShelves.map((shelf) => _buildDynamicShelf(shelf.title, shelf.subtitle, shelf.items)).toList(),
-                    ],
+                    // 1. ALL SONG SHELVES (merged, compact)
+                    ...[ ...songShelves, ...otherShelves, ...albumShelves ]
+                        .where((s) => s.items.isNotEmpty)
+                        .map((shelf) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 4),
+                              child: Text(
+                                shelf.title,
+                                style: context.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: context.colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            _buildCompactGrid(context, shelf.items),
+                          ],
+                        )),
                   ],
                 );
               },
@@ -462,6 +589,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
         ),
       ),
     ),
+    );
+  }
+
+  // Compact 2-column grid: shows more songs in less vertical space
+  Widget _buildCompactGrid(BuildContext context, List<Song> items) {
+    final displaySongs = items.take(12).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final crossAxisCount = width > 900 ? 4 : (width > 600 ? 3 : 2);
+
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: displaySongs.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisExtent: 64,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 6,
+            ),
+            itemBuilder: (context, index) {
+              final song = displaySongs[index];
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => ref.read(playbackSessionProvider.notifier).playSong(
+                  song,
+                  queue: items,
+                  index: index,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: context.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          song.artworkUrl,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 44,
+                            height: 44,
+                            color: context.colorScheme.surfaceContainerHigh,
+                            child: const Icon(Icons.music_note_rounded, size: 20),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _cleanText(song.title),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _cleanText(song.artist),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: context.colorScheme.onSurface.withOpacity(0.50),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -725,5 +940,112 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with AutomaticKeepAlive
         .replaceAll('&#039;', "'")
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>');
+  }
+}
+
+// ─── Cute Music Loading Animation ────────────────────────────────────────────
+class _MusicLoadingAnimation extends StatefulWidget {
+  const _MusicLoadingAnimation();
+
+  @override
+  State<_MusicLoadingAnimation> createState() => _MusicLoadingAnimationState();
+}
+
+class _MusicLoadingAnimationState extends State<_MusicLoadingAnimation>
+    with TickerProviderStateMixin {
+  late List<AnimationController> _controllers;
+  late List<Animation<double>> _bounceAnims;
+  late AnimationController _labelController;
+
+  final _notes = ['🎵', '🎶', '🎸', '🎹', '🎺'];
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(5, (i) {
+      final c = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      );
+      Future.delayed(Duration(milliseconds: i * 120), () {
+        if (mounted) c.repeat(reverse: true);
+      });
+      return c;
+    });
+
+    _bounceAnims = _controllers
+        .map((c) => Tween<double>(begin: 0.0, end: -22.0).animate(
+              CurvedAnimation(parent: c, curve: Curves.easeInOut),
+            ))
+        .toList();
+
+    _labelController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    _labelController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final secondary = Theme.of(context).colorScheme.secondary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Bouncing note row
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(_notes.length, (i) {
+            return AnimatedBuilder(
+              animation: _bounceAnims[i],
+              builder: (context, _) => Transform.translate(
+                offset: Offset(0, _bounceAnims[i].value),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(_notes[i], style: const TextStyle(fontSize: 28)),
+                ),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 20),
+        // Pulsing gradient label
+        AnimatedBuilder(
+          animation: _labelController,
+          builder: (context, _) {
+            return ShaderMask(
+              shaderCallback: (bounds) => LinearGradient(
+                colors: [primary, secondary, primary],
+                stops: [
+                  0.0,
+                  _labelController.value,
+                  1.0,
+                ],
+              ).createShader(bounds),
+              child: const Text(
+                'Loading music...',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 }

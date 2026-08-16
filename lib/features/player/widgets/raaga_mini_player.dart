@@ -26,9 +26,11 @@ class RaagaMiniPlayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Read active playback states
-    final isPlayingVal = ref.watch(playbackStateProvider).value == RaagaPlaybackState.playing;
-    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
-    final duration = ref.watch(playbackDurationProvider).value ?? Duration.zero;
+    final session = ref.watch(playbackSessionProvider);
+    final isPlayingVal = session.state == RaagaPlaybackState.playing;
+    final isLoadingVal = session.state == RaagaPlaybackState.loading;
+    final position = session.position;
+    final duration = session.duration;
     final palette = ref.watch(artworkPaletteProvider);
     final engine = ref.watch(audioEngineProvider);
 
@@ -100,17 +102,33 @@ class RaagaMiniPlayer extends ConsumerWidget {
                           },
                         ),
                         const SizedBox(width: 4),
-                        RaagaIconButton(
-                          icon: isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
-                          size: 26,
-                          onTap: () {
-                            if (isPlayingVal) {
-                              engine.pause();
-                            } else {
-                              engine.play();
-                            }
-                          },
-                        ),
+                        isLoadingVal
+                            ? const Padding(
+                                padding: EdgeInsets.all(6.0),
+                                child: SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : RaagaIconButton(
+                                icon: isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
+                                size: 26,
+                                onTap: () {
+                                  if (isPlayingVal) {
+                                    engine.pause();
+                                  } else {
+                                    if (session.state == RaagaPlaybackState.error && session.currentSong != null) {
+                                      ref.read(playbackSessionProvider.notifier).playSong(session.currentSong!);
+                                    } else {
+                                      engine.play();
+                                    }
+                                  }
+                                },
+                              ),
                         const SizedBox(width: 4),
                         RaagaIconButton(
                           icon: Icons.skip_next_rounded,

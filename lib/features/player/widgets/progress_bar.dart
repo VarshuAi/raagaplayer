@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/design_tokens/spacing.dart';
 import '../../../core/extensions/context_extensions.dart';
 import '../provider/playback_provider.dart';
+import '../../../music/presentation/providers/music_providers.dart';
 import '../../../core/services/haptic_service.dart';
 
 class PlayerProgressBar extends ConsumerWidget {
@@ -15,8 +16,9 @@ class PlayerProgressBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
-    final duration = ref.watch(playbackDurationProvider).value ?? Duration.zero;
+    final session = ref.watch(playbackSessionProvider);
+    final position = session.position;
+    final duration = session.duration;
     final engine = ref.watch(audioEngineProvider);
     final activeColor = ambientColor ?? context.colorScheme.primary;
 

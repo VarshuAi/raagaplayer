@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -392,24 +393,14 @@ class _DownloadManagerScreenState extends ConsumerState<DownloadManagerScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          ...progressMap.entries.map((e) {
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: context.colorScheme.primary.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: ListTile(
-                                leading: const Icon(Icons.downloading_rounded, color: Colors.purpleAccent),
-                                title: Text('Downloading track #${e.key}', style: const TextStyle(fontSize: 14)),
-                                subtitle: LinearProgressIndicator(
-                                  value: e.value,
-                                  color: context.colorScheme.primary,
-                                ),
-                                trailing: Text('${(e.value * 100).toInt()}%'),
-                              ),
-                            );
-                          }),
+                          ...progressMap.entries.map((e) => _DownloadProgressCard(
+                            songId: e.key,
+                            progress: e.value,
+                            onComplete: () {
+                              // Reload list after a brief delay
+                              Future.delayed(const Duration(seconds: 1), _loadRealStorageData);
+                            },
+                          )),
                           const SizedBox(height: 12),
                         ],
                       );
@@ -554,6 +545,323 @@ class _DownloadManagerScreenState extends ConsumerState<DownloadManagerScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Animated Download Progress Card ─────────────────────────────────────────
+class _DownloadProgressCard extends StatefulWidget {
+  final String songId;
+  final double progress;
+  final VoidCallback? onComplete;
+
+  const _DownloadProgressCard({
+    required this.songId,
+    required this.progress,
+    this.onComplete,
+  });
+
+  @override
+  State<_DownloadProgressCard> createState() => _DownloadProgressCardState();
+}
+
+class _DownloadProgressCardState extends State<_DownloadProgressCard>
+    with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _waveController;
+  late AnimationController _successController;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _fadeAnim;
+  bool _showSuccess = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat();
+
+    _successController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    _scaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _successController, curve: Curves.elasticOut),
+    );
+    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _successController, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_DownloadProgressCard old) {
+    super.didUpdateWidget(old);
+    if (widget.progress >= 1.0 && !_showSuccess) {
+      setState(() => _showSuccess = true);
+      _waveController.stop();
+      _pulseController.stop();
+      _successController.forward();
+      widget.onComplete?.call();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _waveController.dispose();
+    _successController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final secondary = Theme.of(context).colorScheme.secondary;
+
+    if (_showSuccess) {
+      // ── Completion celebration card ─────────────────────────
+      return AnimatedBuilder(
+        animation: _successController,
+        builder: (context, _) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primary.withOpacity(0.15 * _fadeAnim.value),
+                  secondary.withOpacity(0.08 * _fadeAnim.value),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: primary.withOpacity(0.6 * _fadeAnim.value),
+                width: 1.5,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // Bouncy checkmark with sparkles
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Sparkle burst
+                    ...List.generate(8, (i) {
+                      final angle = (i / 8) * 2 * pi;
+                      final dist = 22.0 * _scaleAnim.value;
+                      return Transform.translate(
+                        offset: Offset(cos(angle) * dist, sin(angle) * dist),
+                        child: Opacity(
+                          opacity: (1.0 - _scaleAnim.value * 0.5).clamp(0, 1),
+                          child: Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: i.isEven ? primary : secondary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    // Checkmark circle
+                    Transform.scale(
+                      scale: _scaleAnim.value,
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [primary, secondary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: primary.withOpacity(0.5),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Download Complete! 🎉',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: primary,
+                        ),
+                      ),
+                      Text(
+                        'Track saved for offline playback',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    // ── In-progress animated card ───────────────────────────────
+    return AnimatedBuilder(
+      animation: Listenable.merge([_pulseController, _waveController]),
+      builder: (context, _) {
+        final pulse = _pulseController.value;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: primary.withOpacity(0.08 + pulse * 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: primary.withOpacity(0.3 + pulse * 0.4),
+              width: 1.5 + pulse * 0.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: primary.withOpacity(0.15 * pulse),
+                blurRadius: 12,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Animated music wave bars
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: List.generate(4, (i) {
+                        final offsets = [0.0, 0.25, 0.5, 0.75];
+                        final h = 0.25 + 0.75 * ((_waveController.value + offsets[i]) % 1.0);
+                        return Container(
+                          width: 4,
+                          height: 28 * h,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(2),
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [primary, secondary],
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Downloading...',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          widget.songId,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Percent badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${(widget.progress * 100).toInt()}%',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // Glowing progress bar
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: widget.progress,
+                      minHeight: 5,
+                      backgroundColor: primary.withOpacity(0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(primary),
+                    ),
+                  ),
+                  // Animated shimmer highlight on progress bar
+                  if (widget.progress < 1.0)
+                    Positioned(
+                      left: (widget.progress * (MediaQuery.of(context).size.width - 80) - 30).clamp(0, double.infinity),
+                      top: 0,
+                      child: Container(
+                        width: 30,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          gradient: LinearGradient(
+                            colors: [Colors.transparent, Colors.white.withOpacity(0.6 * pulse), Colors.transparent],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

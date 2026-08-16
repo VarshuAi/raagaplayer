@@ -9,7 +9,7 @@ import 'scanner_events.dart';
 
 class MediaScanner {
   final AppDatabase database;
-  final aq.OnAudioQuery _audioQuery = aq.OnAudioQuery();
+  final aq.OnAudioQuery? _audioQuery = (Platform.isAndroid || Platform.isIOS) ? aq.OnAudioQuery() : null;
   final _eventController = StreamController<ScannerEvent>.broadcast();
 
   MediaScanner({required this.database});
@@ -79,12 +79,19 @@ class MediaScanner {
         ),
       );
 
+      if (Platform.isWindows) {
+        _eventController.add(ScanCompleted(songsToCreate.length));
+        return;
+      }
+
       // 2. Scan external storage files if permissions are granted
-      final hasPermission = await aq.OnAudioQuery().permissionsStatus();
+      final hasPermission = (Platform.isAndroid || Platform.isIOS) 
+          ? await aq.OnAudioQuery().permissionsStatus()
+          : false;
       int externalSongsCount = 0;
 
-      if (hasPermission) {
-        final rawSongs = await _audioQuery.querySongs(
+      if (hasPermission && _audioQuery != null) {
+        final rawSongs = await _audioQuery!.querySongs(
           sortType: aq.SongSortType.TITLE,
           orderType: aq.OrderType.ASC_OR_SMALLER,
           uriType: aq.UriType.EXTERNAL,

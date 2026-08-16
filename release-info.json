@@ -1,0 +1,6 @@
+{
+  "version": "2.0.0",
+  "buildNumber": 2,
+  "releaseNotes": "• Integrated Synced Lyrics with dynamic scrolling and tap-to-seek support.\n• Added native Android Equalizer with 5 frequency bands, customizable gains, presets, and Bass Boost.\n• Added Sleep Timer directly in now-playing controllers.\n• Added a dedicated offline Downloads tab inside the main Library page.\n• Implemented secure XOR encryption for backend API URLs to prevent reverse-engineering.",
+  "apkUrl": "https://github.com/VarshuAi/raagaplayer/raw/main/raaga-music-player-release.apk"
+}

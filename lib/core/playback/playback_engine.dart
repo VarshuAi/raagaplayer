@@ -4,13 +4,19 @@ import '../audio/audio_state.dart';
 import '../audio/raaga_audio_handler.dart';
 
 class PlaybackEngine {
-  static final AudioPlayer sharedPlayer = AudioPlayer();
+  static final AndroidEqualizer androidEqualizer = AndroidEqualizer();
+  static final AudioPlayer sharedPlayer = AudioPlayer(
+    audioPipeline: AudioPipeline(
+      androidAudioEffects: [androidEqualizer],
+    ),
+  );
   AudioPlayer get _player => sharedPlayer;
   late final RaagaAudioHandler _audioHandler;
 
   final _playbackStateController = StreamController<RaagaPlaybackState>.broadcast();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
+  final _errorController = StreamController<String>.broadcast();
 
   PlaybackEngine() {
     _audioHandler = RaagaAudioHandler(_player);
@@ -20,6 +26,17 @@ class PlaybackEngine {
     _player.playerStateStream.listen((state) {
       _playbackStateController.add(_mapPlaybackState(state));
     });
+
+    // ← CRITICAL: listen for just_audio playback errors (403, network, codec, etc.)
+    _player.playbackEventStream.listen(
+      (_) {},
+      onError: (Object e, StackTrace st) {
+        final msg = e.toString();
+        print('[PlaybackEngine] playbackEvent error: $msg');
+        _errorController.add(msg);
+        _playbackStateController.add(RaagaPlaybackState.error);
+      },
+    );
   }
 
   RaagaAudioHandler get audioHandler => _audioHandler;
@@ -27,16 +44,26 @@ class PlaybackEngine {
   Stream<RaagaPlaybackState> get playbackStateStream => _playbackStateController.stream;
   Stream<Duration> get positionStream => _positionController.stream;
   Stream<Duration> get durationStream => _durationController.stream;
+  Stream<String> get errorStream => _errorController.stream;
 
   RaagaPlaybackState get currentPlaybackState => _mapPlaybackState(_player.playerState);
   Duration get currentPosition => _player.position;
   Duration get currentDuration => _player.duration ?? Duration.zero;
 
   Future<void> setSource(String sourceUrl) async {
-    if (sourceUrl.startsWith('http')) {
-      await _player.setUrl(sourceUrl);
-    } else {
+    if (sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://')) {
+      await _player.setUrl(
+        sourceUrl,
+        headers: const {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+          'Referer': 'https://www.youtube.com/',
+          'Origin': 'https://www.youtube.com',
+        },
+      );
+    } else if (sourceUrl.isNotEmpty) {
       await _player.setFilePath(sourceUrl);
+    } else {
+      throw Exception('Empty stream URL provided');
     }
   }
 
@@ -52,6 +79,7 @@ class PlaybackEngine {
     await _playbackStateController.close();
     await _positionController.close();
     await _durationController.close();
+    await _errorController.close();
   }
 
   RaagaPlaybackState _mapPlaybackState(PlayerState state) {
@@ -59,6 +87,8 @@ class PlaybackEngine {
     if (state.processingState == ProcessingState.loading) return RaagaPlaybackState.loading;
     if (state.processingState == ProcessingState.buffering) return RaagaPlaybackState.loading;
     if (state.processingState == ProcessingState.completed) return RaagaPlaybackState.completed;
+    // NOTE: ProcessingState.error is not in the enum; just_audio surfaces errors
+    // via playbackEventStream.onError instead. The listener above handles it.
     return state.playing ? RaagaPlaybackState.playing : RaagaPlaybackState.paused;
   }
 }

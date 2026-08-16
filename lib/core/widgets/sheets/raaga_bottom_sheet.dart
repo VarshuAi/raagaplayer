@@ -7,17 +7,20 @@ import '../layout/glass_container.dart';
 class RaagaBottomSheet extends StatelessWidget {
   final Widget child;
   final String? title;
+  final Widget? trailing;
 
   const RaagaBottomSheet({
     super.key,
     required this.child,
     this.title,
+    this.trailing,
   });
 
   static Future<T?> show<T>({
     required BuildContext context,
     required Widget child,
     String? title,
+    Widget? trailing,
   }) {
     return showModalBottomSheet<T>(
       context: context,
@@ -26,6 +29,7 @@ class RaagaBottomSheet extends StatelessWidget {
       builder: (context) => RaagaBottomSheet(
         title: title,
         child: child,
+        trailing: trailing,
       ),
     );
   }
@@ -58,12 +62,23 @@ class RaagaBottomSheet extends StatelessWidget {
               if (title != null) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                  child: Text(
-                    title!,
-                    style: context.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 32), // spacer to match trailing
+                      Expanded(
+                        child: Text(
+                          title!,
+                          style: context.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      if (trailing != null)
+                        trailing!
+                      else
+                        const SizedBox(width: 32),
+                    ],
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),

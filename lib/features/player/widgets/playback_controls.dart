@@ -22,6 +22,7 @@ class PlaybackControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(playbackSessionProvider);
     final isPlayingVal = session.state == RaagaPlaybackState.playing;
+    final isLoadingVal = session.state == RaagaPlaybackState.loading;
     final isShuffle = session.shuffle;
     final repeatMode = session.repeatMode;
     final engine = ref.watch(audioEngineProvider);
@@ -53,14 +54,20 @@ class PlaybackControls extends ConsumerWidget {
         ),
         // Play / Pause button dynamically styled with ambient color
         AnimatedTap(
-          onTap: () {
-            HapticService.medium();
-            if (isPlayingVal) {
-              engine.pause();
-            } else {
-              engine.play();
-            }
-          },
+          onTap: isLoadingVal
+              ? null
+              : () {
+                  HapticService.medium();
+                  if (isPlayingVal) {
+                    engine.pause();
+                  } else {
+                    if (session.state == RaagaPlaybackState.error && session.currentSong != null) {
+                      ref.read(playbackSessionProvider.notifier).playSong(session.currentSong!);
+                    } else {
+                      engine.play();
+                    }
+                  }
+                },
           child: Container(
             width: 72,
             height: 72,
@@ -75,11 +82,19 @@ class PlaybackControls extends ConsumerWidget {
                 ),
               ],
             ),
-            child: Icon(
-              isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
-              size: 36,
-              color: Colors.white,
-            ),
+            child: isLoadingVal
+                ? const Padding(
+                    padding: EdgeInsets.all(22.0),
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  )
+                : Icon(
+                    isPlayingVal ? RaagaIcons.pause : RaagaIcons.play,
+                    size: 36,
+                    color: Colors.white,
+                  ),
           ),
         ),
         // Next song button

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -26,6 +27,28 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  static const _voiceChannel = MethodChannel('com.raaga.music/voice');
+
+  Future<void> _startVoiceSearch() async {
+    if (!Platform.isAndroid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Voice search is only supported on Android.')),
+      );
+      return;
+    }
+    try {
+      final String? result = await _voiceChannel.invokeMethod('startVoiceRecognizer');
+      if (result != null && result.isNotEmpty && mounted) {
+        setState(() {
+          _searchController.text = result;
+        });
+        _saveSearchTerm(result);
+        _performSearch(result);
+      }
+    } on PlatformException catch (e) {
+      print('[VoiceSearch] Failed to trigger speech recognizer: ${e.message}');
+    }
+  }
   List<Song> _searchResults = [];
   bool _isLoading = false;
   List<String> _recentSearches = [];
@@ -205,7 +228,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       )
                     : IconButton(
                         icon: Icon(Icons.mic_none_rounded, color: context.colorScheme.onSurface.withOpacity(0.60)),
-                        onPressed: () {},
+                        onPressed: _startVoiceSearch,
                       ),
                 filled: true,
                 fillColor: context.colorScheme.surfaceContainerHigh,
@@ -243,13 +266,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   radius: 8,
                                 ),
                                 title: _highlightMatches(cleanTitle, _searchController.text),
-                                subtitle: Text('$cleanArtist • $cleanAlbum'),
+                                subtitle: Text(
+                                  cleanAlbum.isNotEmpty ? '$cleanArtist • $cleanAlbum' : cleanArtist,
+                                ),
                                 onTap: () {
                                   _saveSearchTerm(_searchController.text.isNotEmpty ? _searchController.text : cleanTitle);
                                   ref.read(playbackSessionProvider.notifier).playSong(
                                     song,
-                                    queue: _searchResults,
-                                    index: index,
+                                    queue: [song],
+                                    index: 0,
                                   );
                                 },
                               );
@@ -356,8 +381,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                           _saveSearchTerm(cleanTitle);
                                           ref.read(playbackSessionProvider.notifier).playSong(
                                             song,
-                                            queue: songs,
-                                            index: songs.indexOf(song),
+                                            queue: [song],
+                                            index: 0,
                                           );
                                         },
                                       );

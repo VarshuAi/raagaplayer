@@ -42,8 +42,8 @@ void main() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.raaga.music.channel.audio',
         androidNotificationChannelName: 'A1 Raaga Music Playback',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        androidNotificationOngoing: false,
+        androidStopForegroundOnPause: false,
         androidNotificationIcon: 'mipmap/ic_launcher',
         androidShowNotificationBadge: true,
       ),
