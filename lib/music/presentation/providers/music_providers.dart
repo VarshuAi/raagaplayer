@@ -415,15 +415,61 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
       return;
     }
 
+    bool success = false;
     try {
       logToFile('[playSong] Setting engine source to: ${resolvedUrl.substring(0, min(60, resolvedUrl.length))}...');
       await engine.setSource(resolvedUrl);
       _isTransitioning = false; // Allow engine events through once source is set
       logToFile('[playSong] Calling engine.play()...');
       await engine.play();
+      success = true;
       logToFile('[playSong] Playback started successfully!');
     } catch (e) {
-      logToFile('[playSong] Playback failed for $resolvedUrl: $e');
+      logToFile('[playSong] Direct playback failed: $e');
+    }
+
+    if (!success && !song.isLocal) {
+      logToFile('[playSong] Direct playback failed. Attempting Invidious proxy fallback...');
+      final httpClient = _ref.read(httpClientProvider);
+      final hosts = [
+        'inv.nadeko.net',
+        'invidious.nerdvpn.de',
+        'invidious.f5.si',
+        'yt.chocolatemoo53.com',
+        'invidious.tiekoetter.com',
+        'inv.zoomerville.com'
+      ];
+      String fallbackUrl = '';
+      for (final host in hosts) {
+        try {
+          final testUri = Uri.parse('https://$host/latest_version?id=${song.id}&itag=140&local=true');
+          logToFile('[playSong] Checking fallback host: $host');
+          final res = await httpClient.head(testUri).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200 || res.statusCode == 302 || res.statusCode == 206) {
+            fallbackUrl = testUri.toString();
+            logToFile('[playSong] Found active fallback host: $host');
+            break;
+          }
+        } catch (err) {
+          logToFile('[playSong] Fallback check failed for $host: $err');
+        }
+      }
+
+      if (fallbackUrl.isNotEmpty) {
+        try {
+          logToFile('[playSong] Setting fallback engine source to: $fallbackUrl');
+          await engine.setSource(fallbackUrl);
+          _isTransitioning = false;
+          await engine.play();
+          success = true;
+          logToFile('[playSong] Fallback playback started successfully!');
+        } catch (err2) {
+          logToFile('[playSong] Fallback playback failed: $err2');
+        }
+      }
+    }
+
+    if (!success) {
       _isTransitioning = false;
       state = state.copyWith(state: RaagaPlaybackState.error);
       return;
