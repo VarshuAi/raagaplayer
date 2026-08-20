@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
   "buildNumber": 200,
-  "releaseNotes": "A1 Raaga v2.0.0 Production Release! Sub-second standalone streaming, zero PC dependency, and clean Material 3 UI.",
-  "apkUrl": "https://github.com/VarshuAi/raagaplayer/releases/download/v2.0.0/raaga-music-player-v2.0.0-final.apk"
+  "releaseNotes": "A1 Raaga v2.0.0 Production Release! Instant standalone streaming, zero PC dependency, and clean Material 3 UI.",
+  "apkUrl": "https://raw.githubusercontent.com/VarshuAi/raagaplayer/main/raaga-music-player-release.apk"
 }
