@@ -16,9 +16,14 @@ import 'features/download/data/services/download_manager.dart';
 import 'core/audio/raaga_audio_handler.dart';
 import 'core/playback/playback_engine.dart';
 import 'features/player/provider/artwork_provider.dart';
+import 'core/streaming/local_audio_stream_server.dart';
+import 'debug/dev_console_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Start in-app HTTP stream proxy for clean ExoPlayer playback without 403
+  await LocalAudioStreamServer().ensureStarted();
 
   final db = AppDatabase.instance();
   final client = http.Client();

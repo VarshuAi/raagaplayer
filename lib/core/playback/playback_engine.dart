@@ -5,11 +5,7 @@ import '../audio/raaga_audio_handler.dart';
 
 class PlaybackEngine {
   static final AndroidEqualizer androidEqualizer = AndroidEqualizer();
-  static final AudioPlayer sharedPlayer = AudioPlayer(
-    audioPipeline: AudioPipeline(
-      androidAudioEffects: [androidEqualizer],
-    ),
-  );
+  static final AudioPlayer sharedPlayer = AudioPlayer();
   AudioPlayer get _player => sharedPlayer;
   late final RaagaAudioHandler _audioHandler;
 
@@ -27,7 +23,7 @@ class PlaybackEngine {
       _playbackStateController.add(_mapPlaybackState(state));
     });
 
-    // ← CRITICAL: listen for just_audio playback errors (403, network, codec, etc.)
+    // Listen for just_audio playback errors
     _player.playbackEventStream.listen(
       (_) {},
       onError: (Object e, StackTrace st) {
@@ -50,14 +46,19 @@ class PlaybackEngine {
   Duration get currentPosition => _player.position;
   Duration get currentDuration => _player.duration ?? Duration.zero;
 
-  Future<void> setSource(String sourceUrl) async {
+  Future<void> setSource(String sourceUrl, {Map<String, String>? headers}) async {
     if (sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://')) {
-      await _player.setUrl(
-        sourceUrl,
-        headers: const {
-          'User-Agent': 'com.google.android.youtube/19.12.35 (Linux; U; Android 11; GMT) ExoPlayerLib/2.19.1',
-        },
-      );
+      print('[PlaybackEngine] Setting direct stream source: $sourceUrl');
+      final uri = Uri.parse(sourceUrl);
+      final streamHeaders = headers ?? {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Referer': 'https://music.youtube.com/',
+        'Origin': 'https://music.youtube.com',
+      };
+      await _player.setAudioSource(AudioSource.uri(
+        uri,
+        headers: streamHeaders,
+      ));
     } else if (sourceUrl.isNotEmpty) {
       await _player.setFilePath(sourceUrl);
     } else {
@@ -85,8 +86,6 @@ class PlaybackEngine {
     if (state.processingState == ProcessingState.loading) return RaagaPlaybackState.loading;
     if (state.processingState == ProcessingState.buffering) return RaagaPlaybackState.loading;
     if (state.processingState == ProcessingState.completed) return RaagaPlaybackState.completed;
-    // NOTE: ProcessingState.error is not in the enum; just_audio surfaces errors
-    // via playbackEventStream.onError instead. The listener above handles it.
     return state.playing ? RaagaPlaybackState.playing : RaagaPlaybackState.paused;
   }
 }

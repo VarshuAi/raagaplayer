@@ -53,12 +53,13 @@ class JustAudioEngine implements AudioEngine {
       if (sourceUrl.isEmpty) {
         await _player.setAudioSource(ConcatenatingAudioSource(children: []));
       } else if (sourceUrl.startsWith('http')) {
-        await _player.setUrl(
-          sourceUrl,
-          headers: const {
-            'User-Agent': 'com.google.android.youtube/19.12.35 (Linux; U; Android 11; GMT) ExoPlayerLib/2.19.1',
-          },
-        );
+        try {
+          final uri = Uri.parse(sourceUrl);
+          final audioSource = LockCachingAudioSource(uri);
+          await _player.setAudioSource(audioSource);
+        } catch (e) {
+          await _player.setUrl(sourceUrl);
+        }
       } else if (sourceUrl.startsWith('file://')) {
         // Local downloaded file — use URI-based source
         await _player.setAudioSource(

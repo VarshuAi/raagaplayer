@@ -59,21 +59,20 @@ class DownloadManager {
       if (songId.length == 11) {
         print('[DownloadManager] Resolving stream URL for download: $songId...');
         String? resolved;
-        // Try Android VR client first (works without 403 on client side)
+        // 1. Try standard default client (with full cipher decryption)
         try {
           final manifest = await ytExplode.videos.streams.getManifest(
             songId,
-            ytClients: [YoutubeApiClient.androidVr],
           ).timeout(const Duration(seconds: 15));
           final mp4Streams = manifest.audioOnly.where((s) => s.container == StreamContainer.mp4);
           resolved = mp4Streams.isNotEmpty
               ? mp4Streams.withHighestBitrate().url.toString()
               : manifest.audioOnly.withHighestBitrate().url.toString();
         } catch (e) {
-          print('[DownloadManager] androidVr client failed: $e. Trying Android standard client...');
+          print('[DownloadManager] standard client failed: $e. Trying Android client...');
         }
         
-        // Try Android standard client next
+        // 2. Try Android client next
         if (resolved == null) {
           try {
             final manifest = await ytExplode.videos.streams.getManifest(
@@ -85,7 +84,7 @@ class DownloadManager {
                 ? mp4Streams.withHighestBitrate().url.toString()
                 : manifest.audioOnly.withHighestBitrate().url.toString();
           } catch (e) {
-            print('[DownloadManager] android standard client failed: $e. Trying standard client fallback...');
+            print('[DownloadManager] android client failed: $e');
           }
         }
 

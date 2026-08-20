@@ -12,7 +12,7 @@ import '../design_tokens/spacing.dart';
 
 class UpdateService {
   static const String currentVersion = "2.0.0";
-  static const int currentBuildNumber = 4;
+  static const int currentBuildNumber = 200;
 
   static const String updateInfoUrl =
       "https://raw.githubusercontent.com/VarshuAi/raagaplayer/main/release-info.json";

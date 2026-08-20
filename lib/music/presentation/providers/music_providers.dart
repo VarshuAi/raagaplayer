@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import '../../../../core/streaming/local_audio_stream_server.dart';
 import '../../../../core/audio/audio_state.dart';
 import '../../../../core/services/playback_restore.dart';
 import '../../../../core/audio/queue_manager.dart';
@@ -48,8 +49,18 @@ import '../../../../core/playback/media_pipeline.dart';
 import '../../../../core/database/app_database.dart' hide Song, Playlist;
 import '../../../../core/database/app_database.dart' as db_models;
 
+import '../../../../debug/crash_reporter.dart';
+import '../../../../core/streaming/mobile_stream_resolver.dart';
+
 void logToFile(String msg) {
   print(msg);
+  CrashReporter.logInfo(msg);
+  try {
+    File('/sdcard/raaga_debug.log').writeAsStringSync(
+      '${DateTime.now().toIso8601String()}: $msg\n',
+      mode: FileMode.append,
+    );
+  } catch (_) {}
   try {
     getApplicationDocumentsDirectory().then((dir) {
       final file = File(p.join(dir.path, 'raaga_debug.log'));
@@ -206,8 +217,10 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
     });
 
     engine.durationStream.listen((dur) {
-      state = state.copyWith(duration: dur);
-      print('[PlaybackNotifier] Duration update: ${dur.inSeconds}s');
+      if (dur > Duration.zero) {
+        state = state.copyWith(duration: dur);
+        print('[PlaybackNotifier] Duration update: ${dur.inSeconds}s');
+      }
     });
 
     engine.playbackStateStream.listen((playbackState) {
@@ -352,72 +365,66 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
       resolvedUrl = localPath;
       print('[playSong] Playing local file path: $resolvedUrl');
 
-    } else if (song.id.isNotEmpty && song.id.length == 11) {
-      // ── Online song — resolve YouTube stream URL ───────────────────────
-      try {
-        logToFile('[playSong] Starting stream resolution for song: ${song.id}...');
+    } else if (song.sourceUrl.isNotEmpty && (song.sourceUrl.startsWith('http://') || song.sourceUrl.startsWith('https://')) && !song.sourceUrl.contains('/api/stream') && !song.sourceUrl.contains('youtube.com')) {
+      resolvedUrl = song.sourceUrl;
+      logToFile('[playSong] Playing direct HTTP source: $resolvedUrl');
+    } else if (song.id.isNotEmpty || song.sourceUrl.isNotEmpty) {
+      final songId = song.id.isNotEmpty ? song.id : (song.sourceUrl.contains('id=') ? song.sourceUrl.split('id=').last : song.id);
+      if (AppUrls.useProxyServer) {
+        logToFile('[playSong] Requesting stream from YT proxy server for song: $songId...');
+        for (final serverBase in AppUrls.serverPool) {
+          try {
+            final client = http.Client();
+            final uri = Uri.parse('$serverBase/api/stream?id=$songId');
+            final resp = await client.get(uri).timeout(const Duration(seconds: 8));
+            if (resp.statusCode == 200) {
+              final data = json.decode(resp.body);
+              final streamProxyUrl = data['url'] ?? data['streamUrl'] ?? data['directUrl'];
+              if (streamProxyUrl != null && (streamProxyUrl as String).isNotEmpty) {
+                final str = streamProxyUrl as String;
+                final decodedStr = Uri.decodeComponent(str).toLowerCase();
+                if (!decodedStr.contains('youtube.com/watch') && !decodedStr.contains('music.youtube.com/watch')) {
+                  resolvedUrl = str;
+                  logToFile('[playSong] Successfully resolved valid audio stream from server ($serverBase): $resolvedUrl');
+                  break;
+                } else {
+                  logToFile('[playSong] Server returned watch page URL ($str), skipping to direct on-device extraction...');
+                }
+              }
+            }
+          } catch (e) {
+            logToFile('[playSong] Server ($serverBase) fetch error: $e');
+          }
+        }
+      }
 
-        StreamManifest? manifest;
-        // Try Android VR client first (works without 403 on client side)
+      if (resolvedUrl.isEmpty && song.id.isNotEmpty && song.id.length == 11) {
+        logToFile('[playSong] Running Mobile-Only Multi-Engine Stream Resolver for song: ${song.id}...');
         try {
-          manifest = await ytExplode.videos.streams.getManifest(
-            song.id,
-            ytClients: [YoutubeApiClient.androidVr],
-          ).timeout(const Duration(seconds: 15));
+          final mobileUrl = await MobileStreamResolver.resolveStream(song.id);
+          if (mobileUrl != null && mobileUrl.isNotEmpty) {
+            resolvedUrl = mobileUrl;
+            logToFile('[playSong] MobileStreamResolver successfully resolved stream!');
+          }
         } catch (e) {
-          logToFile('[playSong] Android VR stream resolution failed: $e. Trying Android standard...');
+          logToFile('[playSong] MobileStreamResolver error: $e');
         }
-
-        // Try Android standard client next
-        if (manifest == null) {
-          try {
-            manifest = await ytExplode.videos.streams.getManifest(
-              song.id,
-              ytClients: [YoutubeApiClient.android],
-            ).timeout(const Duration(seconds: 15));
-          } catch (e) {
-            logToFile('[playSong] Android standard stream resolution failed: $e. Trying standard client fallback...');
-          }
-        }
-
-        // Try standard default client fallback
-        if (manifest == null) {
-          try {
-            manifest = await ytExplode.videos.streams.getManifest(
-              song.id,
-            ).timeout(const Duration(seconds: 20));
-          } catch (e) {
-            logToFile('[playSong] Standard client fallback failed: $e');
-          }
-        }
-
-        if (manifest != null) {
-          final mp4Streams = manifest.audioOnly.where((s) => s.container == StreamContainer.mp4);
-          resolvedUrl = mp4Streams.isNotEmpty
-              ? mp4Streams.withHighestBitrate().url.toString()
-              : manifest.audioOnly.withHighestBitrate().url.toString();
-          logToFile('[playSong] Resolved stream URL: ${resolvedUrl.substring(0, min(60, resolvedUrl.length))}...');
-        } else {
-          logToFile('[playSong] Direct resolution failed for song ${song.id} — all clients failed.');
-        }
-      } catch (e) {
-        logToFile('[playSong] Direct resolution exception for song ${song.id}: $e');
       }
     }
 
     if (resolvedUrl.isEmpty) {
-      logToFile('[playSong] Stream resolution failed and no fallback available.');
+      logToFile('[playSong] Stream resolution failed.');
       _isTransitioning = false;
       state = state.copyWith(state: RaagaPlaybackState.error);
       try {
-        await engine.setSource(''); // Clear source so play button does not play the old track
+        await engine.setSource('');
       } catch (_) {}
       return;
     }
 
     bool success = false;
     try {
-      logToFile('[playSong] Setting engine source to: ${resolvedUrl.substring(0, min(60, resolvedUrl.length))}...');
+      logToFile('[playSong] Setting engine source to pure YouTube URL...');
       await engine.setSource(resolvedUrl);
       _isTransitioning = false; // Allow engine events through once source is set
       logToFile('[playSong] Calling engine.play()...');
@@ -426,47 +433,6 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
       logToFile('[playSong] Playback started successfully!');
     } catch (e) {
       logToFile('[playSong] Direct playback failed: $e');
-    }
-
-    if (!success && !song.isLocal) {
-      logToFile('[playSong] Direct playback failed. Attempting Invidious proxy fallback...');
-      final httpClient = _ref.read(httpClientProvider);
-      final hosts = [
-        'inv.nadeko.net',
-        'invidious.nerdvpn.de',
-        'invidious.f5.si',
-        'yt.chocolatemoo53.com',
-        'invidious.tiekoetter.com',
-        'inv.zoomerville.com'
-      ];
-      String fallbackUrl = '';
-      for (final host in hosts) {
-        try {
-          final testUri = Uri.parse('https://$host/latest_version?id=${song.id}&itag=140&local=true');
-          logToFile('[playSong] Checking fallback host: $host');
-          final res = await httpClient.head(testUri).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200 || res.statusCode == 302 || res.statusCode == 206) {
-            fallbackUrl = testUri.toString();
-            logToFile('[playSong] Found active fallback host: $host');
-            break;
-          }
-        } catch (err) {
-          logToFile('[playSong] Fallback check failed for $host: $err');
-        }
-      }
-
-      if (fallbackUrl.isNotEmpty) {
-        try {
-          logToFile('[playSong] Setting fallback engine source to: $fallbackUrl');
-          await engine.setSource(fallbackUrl);
-          _isTransitioning = false;
-          await engine.play();
-          success = true;
-          logToFile('[playSong] Fallback playback started successfully!');
-        } catch (err2) {
-          logToFile('[playSong] Fallback playback failed: $err2');
-        }
-      }
     }
 
     if (!success) {
@@ -494,6 +460,62 @@ class PlaybackSessionNotifier extends StateNotifier<PlaybackSession> {
     if (finalQueue.length == 1 && !song.isLocal) {
       _fetchAndAppendAutoplayRecommendations(song);
     }
+  }
+
+  Future<String?> _resolveWebRemixStream(String videoId) async {
+    try {
+      final client = http.Client();
+      final uri = Uri.parse('https://music.youtube.com/youtubei/v1/player?prettyPrint=false');
+      final payload = jsonEncode({
+        "videoId": videoId,
+        "context": {
+          "client": {
+            "hl": "en-GB",
+            "gl": "IN",
+            "clientName": "WEB_REMIX",
+            "clientVersion": "1.20260725.00.00",
+            "platform": "DESKTOP",
+            "visitorData": "Cgt2S1VnN1ZNSmlBSSiZq-myBg%3D%3D"
+          }
+        },
+        "playbackContext": {
+          "contentPlaybackContext": {
+            "html5Preference": "HTML5_PREF_WANTS",
+            "signatureTimestamp": 20660
+          }
+        }
+      });
+      
+      final resp = await client.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
+          'X-YouTube-Client-Name': '67',
+          'X-YouTube-Client-Version': '1.20260725.00.00',
+          'X-Goog-Visitor-Id': 'Cgt2S1VnN1ZNSmlBSSiZq-myBg%3D%3D',
+          'Origin': 'https://music.youtube.com',
+          'Referer': 'https://music.youtube.com/',
+        },
+        body: payload,
+      ).timeout(const Duration(seconds: 5));
+
+      if (resp.statusCode == 200) {
+        final j = jsonDecode(resp.body) as Map<String, dynamic>;
+        final formats = (j['streamingData']?['adaptiveFormats'] as List?) ?? [];
+        for (final f in formats) {
+          final mime = f['mimeType']?.toString() ?? '';
+          if (mime.contains('audio')) {
+            if (f.containsKey('url')) {
+              return f['url'].toString();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logToFile('[_resolveWebRemixStream] error: $e');
+    }
+    return null;
   }
 
   Future<void> playNext() async {
