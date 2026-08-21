@@ -1,6 +1,6 @@
 {
-  "version": "2.0.0",
-  "buildNumber": 200,
-  "releaseNotes": "A1 Raaga v2.0.0 Production Release! Instant standalone streaming, zero PC dependency, and clean Material 3 UI.",
+  "version": "2.0.1",
+  "buildNumber": 201,
+  "releaseNotes": "A1 Raaga v2.0.1 Production Release! Complete Firebase Free Suite, Google Authentication, Cloud Favorites Sync, FCM Push Notifications, and OTA Remote Config Vercel Load Balancer.",
   "apkUrl": "https://raw.githubusercontent.com/VarshuAi/raagaplayer/main/raaga-music-player-release.apk"
 }
